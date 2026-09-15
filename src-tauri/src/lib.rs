@@ -33,6 +33,7 @@ mod proxy;
 mod services;
 mod session_manager;
 mod settings;
+mod shengsuanyun;
 mod store;
 
 mod tray;
@@ -1155,6 +1156,15 @@ pub fn run() {
                 let codex_oauth_manager =
                     app.state::<AppState>().codex_oauth_manager.clone();
                 app.manage(CodexOAuthState(codex_oauth_manager));
+
+                // SSY-Switch: 胜算云 OAuth 管理器
+                {
+                    use commands::ShengsuanyunState;
+                    use shengsuanyun::ShengsuanyunAuthManager;
+                    let mgr = Arc::new(ShengsuanyunAuthManager::new(app.state::<AppState>().db.clone()));
+                    mgr.set_app_handle(app.handle().clone());
+                    app.manage(ShengsuanyunState::new(mgr));
+                }
                 log::info!("✓ CodexOAuthManager initialized");
             }
 
@@ -1402,6 +1412,12 @@ pub fn run() {
             commands::update_toml_common_config_snippet,
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
+            commands::shengsuanyun_start_login,
+            commands::shengsuanyun_cancel_login,
+            commands::shengsuanyun_list_accounts,
+            commands::shengsuanyun_get_status,
+            commands::shengsuanyun_refresh_balance,
+            commands::shengsuanyun_logout,
             commands::get_settings,
             commands::save_settings,
             commands::has_codex_unify_history_backup,

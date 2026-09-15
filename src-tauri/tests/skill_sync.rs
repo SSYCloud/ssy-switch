@@ -241,7 +241,10 @@ fn restore_skill_backup_restores_files_to_ssot_and_current_app() {
     reset_test_fs();
     let home = ensure_test_home();
 
-    let ssot_skill_dir = home.join(".ssy-switch").join("skills").join("restore-skill");
+    let ssot_skill_dir = home
+        .join(".ssy-switch")
+        .join("skills")
+        .join("restore-skill");
     write_skill(&ssot_skill_dir, "Restore Skill");
     fs::write(ssot_skill_dir.join("prompt.md"), "restore me").expect("write prompt.md");
 

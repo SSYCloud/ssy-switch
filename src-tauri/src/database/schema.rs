@@ -430,6 +430,8 @@ impl Database {
             [],
         );
 
+        // SSY-Switch: 胜算云账号与绑定表
+        Self::create_shengsuanyun_tables(conn)?;
         Ok(())
     }
 
@@ -548,6 +550,11 @@ impl Database {
                         log::info!("迁移数据库从 v17 到 v18（会话日志字节游标列）");
                         Self::migrate_v17_to_v18(conn)?;
                         Self::set_user_version(conn, 18)?;
+                    }
+                    18 => {
+                        log::info!("迁移数据库从 v18 到 v19（SSY-Switch 胜算云账号与绑定表）");
+                        Self::migrate_v18_to_v19(conn)?;
+                        Self::set_user_version(conn, 19)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1585,6 +1592,42 @@ impl Database {
     /// 后继续增量；之后写入字节偏移走 seek 增量，并记录游标边界前的
     /// 尾部指纹用于识别外部重写（截断由 size 检测，同尺寸/更大的替换
     /// 只有指纹能发现）。
+    fn create_shengsuanyun_tables(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shengsuanyun_accounts (
+                id TEXT PRIMARY KEY,
+                uid TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                avatar_url TEXT NOT NULL DEFAULT '',
+                is_creator INTEGER NOT NULL DEFAULT 0,
+                balance_assets INTEGER,
+                balance_updated_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shengsuanyun_provider_bindings (
+                app_type TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                credential_source TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (app_type, provider_id)
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    fn migrate_v18_to_v19(conn: &Connection) -> Result<(), AppError> {
+        // SSY-Switch: 胜算云账号元数据与 Provider 绑定。API Key 存 OS Keychain，不入库。
+        Self::create_shengsuanyun_tables(conn)
+    }
+
     fn migrate_v17_to_v18(conn: &Connection) -> Result<(), AppError> {
         // 缺表的库（异常/测试夹具）跳过：create_tables 会以含列的新 DDL 建表。
         if Self::table_exists(conn, "session_log_sync")? {

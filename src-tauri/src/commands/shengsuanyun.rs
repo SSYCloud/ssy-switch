@@ -134,8 +134,23 @@ pub async fn shengsuanyun_bind_account(
 
         let providers = crate::services::provider::ProviderService::list(&app_state, at.clone())
             .map_err(|e| e.to_string())?;
-        let (provider_id, mut provider, existing_key) = find_shengsuanyun_provider(providers, &at)
-            .ok_or_else(|| "该应用下未找到胜算云 Provider，请先添加胜算云预设".to_string())?;
+        let (provider_id, mut provider, existing_key) =
+            match find_shengsuanyun_provider(providers, &at) {
+                Some(found) => found,
+                // 查找或创建（幂等）：不存在时按官方 preset 模板创建胜算云 Provider，
+                // base URL / 模型用 preset 值，Key 用 OAuth 凭据。
+                None => {
+                    let created = new_shengsuanyun_provider(&at, &api_key);
+                    crate::services::provider::ProviderService::add(
+                        &app_state,
+                        at.clone(),
+                        created.clone(),
+                        false,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    (created.id.clone(), created, String::new())
+                }
+            };
 
         if !existing_key.is_empty() && existing_key != api_key && !overwrite {
             return Ok(ShengsuanyunBindResult {
@@ -259,6 +274,61 @@ fn write_token(
     Ok(())
 }
 
+/// 按 preset 模板构造目标 App 的胜算云 Provider（与前端 *ProviderPresets.ts 保持一致）。
+fn new_shengsuanyun_provider(
+    at: &crate::app_config::AppType,
+    api_key: &str,
+) -> crate::provider::Provider {
+    use crate::app_config::AppType;
+
+    let (settings, name) = match at {
+        AppType::Claude => (
+            serde_json::json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://router.shengsuanyun.com/api",
+                    "ANTHROPIC_AUTH_TOKEN": api_key,
+                    "ANTHROPIC_MODEL": "anthropic/claude-sonnet-5",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "anthropic/claude-haiku-4.5",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "anthropic/claude-sonnet-5",
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-5"
+                }
+            }),
+            "Shengsuanyun",
+        ),
+        AppType::Codex => (
+            serde_json::json!({
+                "auth": { "OPENAI_API_KEY": api_key },
+                "config": "model_provider = \"custom\"\nmodel = \"openai/gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.custom]\nname = \"shengsuanyun\"\nbase_url = \"https://router.shengsuanyun.com/api/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true"
+            }),
+            "Shengsuanyun",
+        ),
+        _ => (
+            serde_json::json!({
+                "env": {
+                    "GOOGLE_GEMINI_BASE_URL": "https://router.shengsuanyun.com/api",
+                    "GEMINI_API_KEY": api_key,
+                    "GEMINI_MODEL": "google/gemini-3.6-flash"
+                }
+            }),
+            "Shengsuanyun",
+        ),
+    };
+    crate::provider::Provider {
+        id: format!("ssy-{}", uuid::Uuid::new_v4()),
+        name: name.into(),
+        settings_config: settings,
+        website_url: Some("https://www.shengsuanyun.com".into()),
+        category: Some("aggregator".into()),
+        created_at: None,
+        sort_index: None,
+        notes: None,
+        icon: Some("shengsuanyun".into()),
+        icon_color: None,
+        in_failover_queue: false,
+        meta: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,6 +398,18 @@ mod tests {
         );
         // 其它字段不丢失
         assert!(c.settings_config.pointer("/config/base_url").is_some());
+    }
+
+    #[test]
+    fn template_carries_key_and_base_url() {
+        for at in [AppType::Claude, AppType::Codex, AppType::Gemini] {
+            let p = new_shengsuanyun_provider(&at, "sk-x");
+            let cfg = p.settings_config.to_string();
+            assert!(cfg.contains("router.shengsuanyun.com"), "{at:?}");
+            assert!(cfg.contains("sk-x"), "{at:?}");
+            // 写入 token 后仍可再定位
+            assert!(!read_token(&p, &at).is_empty());
+        }
     }
 
     #[test]

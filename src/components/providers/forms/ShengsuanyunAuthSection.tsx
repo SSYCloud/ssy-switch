@@ -34,6 +34,8 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const [busy, setBusy] = useState(false);
   const [intent, setIntent] = useState<OAuthIntent | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
+  const bindAppRef = useRef<string | null>(targetApp ?? null);
 
   const reload = useCallback(async () => {
     try {
@@ -46,6 +48,13 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
 
   useEffect(() => {
     void reload();
+    // 首页横幅点击：携带目标 app 直接开始登录（用户点击即确认）
+    const onLoginRequest = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ appId: string }>).detail;
+      if (detail?.appId) bindAppRef.current = detail.appId;
+      void startLoginRef.current?.(detail?.appId);
+    };
+    window.addEventListener("ssy-login-request", onLoginRequest);
     let offComplete: UnlistenFn | undefined;
     let offFailed: UnlistenFn | undefined;
     let offIntent: UnlistenFn | undefined;
@@ -56,6 +65,28 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         setPhase("idle");
         setError(null);
         void reload();
+        // 自动绑定并激活登录时指定的目标 app（查找或创建胜算云 Provider）
+        const bindApp = bindAppRef.current;
+        if (bindApp) {
+          void (async () => {
+            try {
+              const accounts = await shengsuanyunApi.listAccounts();
+              const latest = accounts[accounts.length - 1];
+              if (!latest) return;
+              const result = await shengsuanyunApi.bindAccount(bindApp, latest.id);
+              if (result.status === "conflict") {
+                setError(
+                  t("shengsuanyun.bindConflict", {
+                    defaultValue:
+                      "该应用已有手动配置的 Key，未自动覆盖。请在供应商设置中确认后再绑定。",
+                  }),
+                );
+              }
+            } catch (e) {
+              setError(String(e));
+            }
+          })();
+        }
       });
       offFailed = await listen<{ sessionId: string; reason: string }>(
         "shengsuanyun-oauth-failed",
@@ -80,17 +111,21 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       offComplete?.();
       offFailed?.();
       offIntent?.();
+      window.removeEventListener("ssy-login-request", onLoginRequest);
     };
   }, [reload]);
+
+  const startLoginRef = useRef<
+    ((app?: string) => Promise<void>) | null
+  >(null);
 
   const startLogin = async (overrideApp?: string) => {
     setBusy(true);
     setError(null);
     try {
-      const start = await shengsuanyunApi.startLogin(
-        overrideApp ?? targetApp,
-        null,
-      );
+      const app = overrideApp ?? targetApp;
+      bindAppRef.current = app ?? null;
+      const start = await shengsuanyunApi.startLogin(app, null);
       sessionIdRef.current = start.sessionId;
       setPhase("pending");
       await settingsApi.openExternal(start.authorizationUrl);
@@ -101,6 +136,8 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       setBusy(false);
     }
   };
+
+  startLoginRef.current = startLogin;
 
   const cancelLogin = async () => {
     if (sessionIdRef.current) {

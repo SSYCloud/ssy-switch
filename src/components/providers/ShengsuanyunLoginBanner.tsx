@@ -70,11 +70,15 @@ export function ShengsuanyunLoginBanner({
         <Button
           size="lg"
           className="bg-emerald-600 hover:bg-emerald-500"
-          onClick={() =>
+          onClick={() => {
+            // 携带目标 app 发起登录；认证中心面板负责展示进度并自动绑定
+            window.dispatchEvent(
+              new CustomEvent("ssy-login-request", { detail: { appId } }),
+            );
             window.dispatchEvent(
               new CustomEvent("ssy-open-auth", { detail: { appId } }),
-            )
-          }
+            );
+          }}
         >
           <KeyRound className="mr-2 h-4 w-4" />
           {t("shengsuanyun.bannerCta", { defaultValue: "用胜算云账号登录" })}

@@ -34,6 +34,25 @@ export interface GeminiProviderPreset {
 
 export const geminiProviderPresets: GeminiProviderPreset[] = [
   {
+    name: "Shengsuanyun",
+    nameKey: "providerForm.presets.shengsuanyun",
+    websiteUrl: "https://www.shengsuanyun.com/?from=CH_4HHXMRYF",
+    apiKeyUrl: "https://www.shengsuanyun.com/?from=CH_4HHXMRYF",
+    settingsConfig: {
+      env: {
+        GOOGLE_GEMINI_BASE_URL: "https://router.shengsuanyun.com/api",
+        GEMINI_MODEL: "google/gemini-3.6-flash",
+      },
+    },
+    baseURL: "https://router.shengsuanyun.com/api",
+    model: "google/gemini-3.6-flash",
+    description: "Shengsuanyun",
+    category: "aggregator",
+    isPartner: true,
+    partnerPromotionKey: "shengsuanyun",
+    icon: "shengsuanyun",
+  },
+  {
     name: "Google Official",
     websiteUrl: "https://ai.google.dev/",
     apiKeyUrl: "https://aistudio.google.com/apikey",
@@ -115,25 +134,6 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     endpointCandidates: ["https://api.aicodemirror.ai/api/gemini"],
     icon: "aicodemirror",
     iconColor: "#000000",
-  },
-  {
-    name: "Shengsuanyun",
-    nameKey: "providerForm.presets.shengsuanyun",
-    websiteUrl: "https://www.shengsuanyun.com/?from=CH_4HHXMRYF",
-    apiKeyUrl: "https://www.shengsuanyun.com/?from=CH_4HHXMRYF",
-    settingsConfig: {
-      env: {
-        GOOGLE_GEMINI_BASE_URL: "https://router.shengsuanyun.com/api",
-        GEMINI_MODEL: "google/gemini-3.6-flash",
-      },
-    },
-    baseURL: "https://router.shengsuanyun.com/api",
-    model: "google/gemini-3.6-flash",
-    description: "Shengsuanyun",
-    category: "aggregator",
-    isPartner: true,
-    partnerPromotionKey: "shengsuanyun",
-    icon: "shengsuanyun",
   },
   {
     name: "AIGoCode",

@@ -107,3 +107,232 @@ pub async fn shengsuanyun_logout(
 ) -> Result<(), String> {
     state.manager.logout(&account_id)
 }
+
+/// 绑定账号到目标 App 的胜算云 Provider：写入 API Key 并（可选）激活。
+///
+/// - 查找该 App 下已有的 Shengsuanyun Provider（按 base URL 识别）；
+/// - 不静默覆盖已有不同 Key：`overwrite: false` 且当前 Key 非空时返回冲突；
+/// - 只更新目标 Provider，不影响其他供应商。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_bind_account(
+    app_handle: tauri::AppHandle,
+    state: State<'_, ShengsuanyunState>,
+    app_type: String,
+    account_id: String,
+    activate: Option<bool>,
+    overwrite: Option<bool>,
+) -> Result<ShengsuanyunBindResult, String> {
+    let api_key = state.manager.api_key_for(&account_id)?;
+    let activate = activate.unwrap_or(true);
+    let overwrite = overwrite.unwrap_or(false);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let app_state = app_handle.state::<crate::store::AppState>();
+        use std::str::FromStr;
+        let at = crate::app_config::AppType::from_str(&app_type).map_err(|e| e.to_string())?;
+
+        let providers = crate::services::provider::ProviderService::list(&app_state, at.clone())
+            .map_err(|e| e.to_string())?;
+        let (provider_id, mut provider, existing_key) = find_shengsuanyun_provider(providers, &at)
+            .ok_or_else(|| "该应用下未找到胜算云 Provider，请先添加胜算云预设".to_string())?;
+
+        if !existing_key.is_empty() && existing_key != api_key && !overwrite {
+            return Ok(ShengsuanyunBindResult {
+                status: "conflict".into(),
+                provider_id: Some(provider_id.clone()),
+                account_id: None,
+            });
+        }
+        write_token(&mut provider, &at, &api_key)?;
+        crate::services::provider::ProviderService::update(
+            &app_state,
+            at.clone(),
+            Some(&provider_id),
+            provider,
+        )
+        .map_err(|e| e.to_string())?;
+
+        let now = chrono::Utc::now().timestamp();
+        app_state.db.upsert_shengsuanyun_binding(
+            at.as_str(),
+            &provider_id,
+            &account_id,
+            "oauth",
+            now,
+        )?;
+
+        if activate {
+            crate::services::provider::ProviderService::switch(&app_state, at, &provider_id)
+                .map_err(|e| e.to_string())?;
+        }
+
+        Ok(ShengsuanyunBindResult {
+            status: "ok".into(),
+            provider_id: Some(provider_id),
+            account_id: Some(account_id),
+        })
+    })
+    .await
+    .map_err(|e| format!("绑定任务执行失败: {e}"))?
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShengsuanyunBindResult {
+    pub status: String,
+    pub provider_id: Option<String>,
+    pub account_id: Option<String>,
+}
+
+/// 在已有 Provider 列表中识别胜算云（按 settingsConfig 中的 base URL）。
+fn find_shengsuanyun_provider(
+    providers: indexmap::IndexMap<String, crate::provider::Provider>,
+    at: &crate::app_config::AppType,
+) -> Option<(String, crate::provider::Provider, String)> {
+    for (id, p) in providers {
+        let cfg = p.settings_config.to_string();
+        let is_ssy =
+            cfg.contains("router.shengsuanyun.com") || p.name.eq_ignore_ascii_case("shengsuanyun");
+        if !is_ssy {
+            continue;
+        }
+        let key = read_token(&p, at);
+        return Some((id, p, key));
+    }
+    None
+}
+
+fn token_field_for(at: &crate::app_config::AppType) -> &'static str {
+    match at {
+        crate::app_config::AppType::Claude => "ANTHROPIC_AUTH_TOKEN",
+        crate::app_config::AppType::Codex => "OPENAI_API_KEY",
+        _ => "GEMINI_API_KEY",
+    }
+}
+
+fn read_token(p: &crate::provider::Provider, at: &crate::app_config::AppType) -> String {
+    let field = token_field_for(at);
+    match at {
+        crate::app_config::AppType::Codex => p
+            .settings_config
+            .pointer(&format!("/auth/{field}"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        _ => p
+            .settings_config
+            .pointer(&format!("/env/{field}"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    }
+}
+
+fn write_token(
+    p: &mut crate::provider::Provider,
+    at: &crate::app_config::AppType,
+    api_key: &str,
+) -> Result<(), String> {
+    let field = token_field_for(at);
+    let (container, leaf) = match at {
+        crate::app_config::AppType::Codex => ("auth", field),
+        _ => ("env", field),
+    };
+    let root = p
+        .settings_config
+        .as_object()
+        .cloned()
+        .ok_or("settingsConfig 格式异常")?;
+    let mut root = serde_json::Map::from_iter(root);
+    let inner = root
+        .entry(container.to_string())
+        .or_insert_with(|| serde_json::Value::Object(Default::default()));
+    if !inner.is_object() {
+        return Err("settingsConfig 路径冲突".into());
+    }
+    inner.as_object_mut().expect("checked above").insert(
+        leaf.to_string(),
+        serde_json::Value::String(api_key.to_string()),
+    );
+    p.settings_config = serde_json::Value::Object(root);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app_config::AppType;
+    use crate::provider::Provider;
+
+    fn provider(env_key: Option<&str>) -> Provider {
+        let mut env = serde_json::Map::new();
+        env.insert(
+            "ANTHROPIC_BASE_URL".into(),
+            "https://router.shengsuanyun.com/api".into(),
+        );
+        if let Some(k) = env_key {
+            env.insert("ANTHROPIC_AUTH_TOKEN".into(), k.into());
+        }
+        Provider {
+            id: "p1".into(),
+            name: "Shengsuanyun".into(),
+            settings_config: serde_json::json!({ "env": env }),
+            website_url: None,
+            category: None,
+            created_at: None,
+            sort_index: None,
+            notes: None,
+            icon: None,
+            icon_color: None,
+            in_failover_queue: false,
+            meta: None,
+        }
+    }
+
+    fn codex_provider() -> Provider {
+        Provider {
+            id: "c1".into(),
+            name: "Shengsuanyun".into(),
+            settings_config: serde_json::json!({
+                "auth": { "OPENAI_API_KEY": "old" },
+                "config": { "base_url": "https://router.shengsuanyun.com/api/v1" }
+            }),
+            website_url: None,
+            category: None,
+            created_at: None,
+            sort_index: None,
+            notes: None,
+            icon: None,
+            icon_color: None,
+            in_failover_queue: false,
+            meta: None,
+        }
+    }
+
+    #[test]
+    fn write_token_claude_and_codex() {
+        let mut p = provider(None);
+        write_token(&mut p, &AppType::Claude, "sk-1").unwrap();
+        assert_eq!(
+            p.settings_config
+                .pointer("/env/ANTHROPIC_AUTH_TOKEN")
+                .unwrap(),
+            "sk-1"
+        );
+        let mut c = codex_provider();
+        write_token(&mut c, &AppType::Codex, "sk-2").unwrap();
+        assert_eq!(
+            c.settings_config.pointer("/auth/OPENAI_API_KEY").unwrap(),
+            "sk-2"
+        );
+        // 其它字段不丢失
+        assert!(c.settings_config.pointer("/config/base_url").is_some());
+    }
+
+    #[test]
+    fn read_token_roundtrip() {
+        let p = provider(Some("old"));
+        assert_eq!(read_token(&p, &AppType::Claude), "old");
+    }
+}

@@ -1413,6 +1413,7 @@ pub fn run() {
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
             commands::shengsuanyun_start_login,
+            commands::shengsuanyun_bind_account,
             commands::shengsuanyun_cancel_login,
             commands::shengsuanyun_list_accounts,
             commands::shengsuanyun_get_status,

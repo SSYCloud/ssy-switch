@@ -184,6 +184,16 @@ function App() {
   const [skillsDiscoverySource, setSkillsDiscoverySource] =
     useState<SkillsPageSource>("repos");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
+
+  // 胜算云登录横幅：跳转到 设置 → 认证 tab
+  useEffect(() => {
+    const openAuth = () => {
+      setSettingsDefaultTab("auth");
+      setCurrentView("settings");
+    };
+    window.addEventListener("ssy-open-auth", openAuth);
+    return () => window.removeEventListener("ssy-open-auth", openAuth);
+  }, []);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [mcpManagementBusy, setMcpManagementBusy] = useState(false);

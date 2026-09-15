@@ -32,6 +32,7 @@ import {
 } from "@/hooks/useHermes";
 import { useStreamCheck } from "@/hooks/useStreamCheck";
 import { ProviderCard } from "@/components/providers/ProviderCard";
+import { ShengsuanyunLoginBanner } from "@/components/providers/ShengsuanyunLoginBanner";
 import { ProviderEmptyState } from "@/components/providers/ProviderEmptyState";
 import {
   useAutoFailoverEnabled,
@@ -523,6 +524,9 @@ export function ProviderList({
 
   return (
     <div className="mt-4 space-y-4">
+      {(appId === "claude" || appId === "codex" || appId === "gemini") && (
+        <ShengsuanyunLoginBanner appId={appId} />
+      )}
       {piStateErrorNotice}
       {claudeDesktopStatusMessages.length > 0 && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">

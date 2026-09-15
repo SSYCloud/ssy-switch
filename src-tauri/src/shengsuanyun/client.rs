@@ -10,6 +10,24 @@ use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
 
+/// /auth/keys 返回的双凭据
+#[derive(Clone, Debug, Default)]
+pub struct SsyCredentials {
+    pub api_key: String,
+    pub jwt_token: String,
+}
+
+impl SsyCredentials {
+    /// 用户信息查询优先用 jwt_token（main.go:543），缺失时退回 api_key
+    pub fn identity_token(&self) -> &str {
+        if self.jwt_token.is_empty() {
+            &self.api_key
+        } else {
+            &self.jwt_token
+        }
+    }
+}
+
 pub struct SsyClient {
     http: Client,
 }
@@ -33,33 +51,62 @@ impl SsyClient {
         url.to_string()
     }
 
-    /// OAuth code 换 api_key。
-    /// 上游响应层级不稳定（`data.data.api_key` / `data.api_key` / `api_key`），三层兜底。
-    pub async fn exchange_code(&self, code: &str, callback_url: &str) -> Result<String, String> {
+    /// OAuth code 换凭据（api_key + jwt_token）。
+    /// 参照 auth_ssy.go parseSSYCredentials：
+    /// - 业务码 `code != 0` 视为失败，错误信息按 `message`/`msg`/`error` 提取
+    /// - 响应层级不稳定（`data.data.*` / `data.*` / 顶层），逐层兜底
+    /// - `api_key` 缺失时用 `jwt_token` 兜底（二者至少要有其一）
+    pub async fn exchange_code(
+        &self,
+        code: &str,
+        callback_url: &str,
+    ) -> Result<SsyCredentials, String> {
         let resp = self
             .http
-            .post(format!("{SSY_API_BASE}/auth/keys"))
+            .post(format!("{SSY_API_BASE}/auth/keys?from=SSY_SWITCH"))
             .header("Accept", "application/json")
             .json(&ExchangeCodeRequest { code, callback_url })
             .send()
             .await
             .map_err(|e| format!("exchange code request failed: {e}"))?;
-        if !resp.status().is_success() {
-            return Err(format!("exchange code HTTP {}", resp.status()));
-        }
-        let v: Value = resp
+        let status = resp.status();
+        let body: Value = resp
             .json()
             .await
             .map_err(|e| format!("decode exchange response: {e}"))?;
-        extract_api_key(&v).ok_or_else(|| "response missing api_key".to_string())
+        if !status.is_success() {
+            return Err(format!(
+                "exchange code HTTP {status}: {}",
+                extract_error_message(&body)
+            ));
+        }
+        // 业务响应码非 0 → 失败（auth_ssy.go:124）
+        let biz_code = v_f64(body.get("code"));
+        if biz_code != 0.0 {
+            return Err(format!(
+                "exchange code failed: {}",
+                extract_error_message(&body)
+            ));
+        }
+        let mut api_key = extract_nested(&body, "api_key").unwrap_or_default();
+        let jwt_token = extract_nested(&body, "jwt_token").unwrap_or_default();
+        if api_key.is_empty() {
+            api_key = jwt_token.clone();
+        }
+        if api_key.is_empty() {
+            return Err("response missing api_key".to_string());
+        }
+        Ok(SsyCredentials { api_key, jwt_token })
     }
 
-    /// 查询用户信息（`x-token` 认证，注意不是 Bearer）
-    pub async fn fetch_user_info(&self, api_key: &str) -> Result<SsyUserInfo, String> {
+    /// 查询用户信息（`x-token` 认证，注意不是 Bearer）。
+    /// 参照 main.go:543：必须用 jwt_token（identity token）调用，
+    /// 用 api_key 可能认证通过但缺少 Wallet 余额数据。
+    pub async fn fetch_user_info(&self, token: &str) -> Result<SsyUserInfo, String> {
         let resp = self
             .http
             .get(format!("{SSY_API_BASE}/user/info"))
-            .header("x-token", api_key)
+            .header("x-token", token)
             .send()
             .await
             .map_err(|e| format!("user info request failed: {e}"))?;
@@ -113,13 +160,36 @@ impl SsyClient {
     }
 }
 
-fn extract_api_key(v: &Value) -> Option<String> {
-    v.pointer("/data/data/api_key")
-        .or_else(|| v.pointer("/data/api_key"))
-        .or_else(|| v.get("api_key"))
+/// 按 `data.data.{field}` / `data.{field}` / `{field}` 三层取字符串
+fn extract_nested(v: &Value, field: &str) -> Option<String> {
+    v.pointer(&format!("/data/data/{field}"))
+        .or_else(|| v.pointer(&format!("/data/{field}")))
+        .or_else(|| v.get(field))
         .and_then(Value::as_str)
+        .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+/// 错误信息提取（auth_ssy.go ssyErrorFrom：message / msg / error）
+fn extract_error_message(v: &Value) -> String {
+    for key in ["message", "msg", "error"] {
+        if let Some(s) = v.get(key).and_then(Value::as_str).map(str::trim) {
+            if !s.is_empty() {
+                return s.to_string();
+            }
+        }
+    }
+    "服务端未提供错误信息".to_string()
+}
+
+/// 数字或字符串 → f64（业务码兼容）
+fn v_f64(v: Option<&Value>) -> f64 {
+    match v {
+        Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
+        Some(Value::String(s)) => s.trim().parse().unwrap_or(0.0),
+        _ => 0.0,
+    }
 }
 
 /// 上游 Assets 类型不稳定（Go 参考实现 ssyFloat 同时兼容数字与字符串）
@@ -168,15 +238,37 @@ mod tests {
     #[test]
     fn api_key_three_layer_fallback() {
         assert_eq!(
-            extract_api_key(&json!({"data":{"data":{"api_key":"k1"}}})),
+            extract_nested(&json!({"data":{"data":{"api_key":"k1"}}}), "api_key"),
             Some("k1".into())
         );
         assert_eq!(
-            extract_api_key(&json!({"data":{"api_key":"k2"}})),
+            extract_nested(&json!({"data":{"api_key":"k2"}}), "api_key"),
             Some("k2".into())
         );
-        assert_eq!(extract_api_key(&json!({"api_key":"k3"})), Some("k3".into()));
-        assert_eq!(extract_api_key(&json!({"data":{}})), None);
+        assert_eq!(
+            extract_nested(&json!({"api_key":"k3"}), "api_key"),
+            Some("k3".into())
+        );
+        assert_eq!(extract_nested(&json!({"data":{}}), "api_key"), None);
+    }
+
+    #[test]
+    fn error_message_extraction() {
+        assert_eq!(
+            extract_error_message(&json!({"message":"code expired"})),
+            "code expired"
+        );
+        assert_eq!(
+            extract_error_message(&json!({"msg": 1})),
+            "服务端未提供错误信息"
+        );
+    }
+
+    #[test]
+    fn biz_code_detection() {
+        assert_eq!(v_f64(Some(&json!(0))), 0.0);
+        assert_eq!(v_f64(Some(&json!("40001"))), 40001.0);
+        assert_eq!(v_f64(None), 0.0);
     }
 
     #[test]

@@ -10,7 +10,7 @@
 //! - state 为 UUID v4，5 分钟过期，验证时原子取出（一次性）
 
 use super::client::SsyClient;
-use super::credential_store as creds;
+use super::credential_store::{self as creds, StoredCredentials};
 use super::models::*;
 use crate::database::Database;
 use std::collections::HashMap;
@@ -137,12 +137,19 @@ impl ShengsuanyunAuthManager {
         // 用 pending 登记的回调端口重建 callback_url（与授权时一致）
         let callback_url = format!("http://127.0.0.1:{callback_port}/auth/shengsuanyun/callback");
 
-        let api_key = self.client.exchange_code(code, &callback_url).await?;
-        let info = self.client.fetch_user_info(&api_key).await?;
-        let is_creator = self.client.detect_creator_role(&api_key).await;
+        let credentials = self.client.exchange_code(code, &callback_url).await?;
+        let stored = StoredCredentials {
+            api_key: credentials.api_key.clone(),
+            jwt_token: credentials.jwt_token.clone(),
+        };
+        let info = self
+            .client
+            .fetch_user_info(credentials.identity_token())
+            .await?;
+        let is_creator = self.client.detect_creator_role(&credentials.api_key).await;
 
         let id = uuid::Uuid::new_v4().to_string();
-        creds::save_api_key(&id, &api_key)?;
+        creds::save_credentials(&id, &stored)?;
         let now = now_ts();
         // 以 uid 为幂等键：同一胜算云账号重复登录时覆盖旧记录（含旧 Key）
         let row = self.db.upsert_shengsuanyun_account(
@@ -183,10 +190,13 @@ impl ShengsuanyunAuthManager {
             .collect())
     }
 
-    /// 刷新余额（写缓存，返回元）。
+    /// 刷新余额（写缓存，返回元）。用户信息查询必须用 jwt_token（见 client.rs 注释）。
     pub async fn refresh_balance(&self, account_id: &str) -> Result<f64, String> {
-        let api_key = creds::load_api_key(account_id)?;
-        let info = self.client.fetch_user_info(&api_key).await?;
+        let credentials = creds::load_credentials(account_id)?;
+        let info = self
+            .client
+            .fetch_user_info(credentials.identity_token())
+            .await?;
         self.db
             .update_shengsuanyun_balance(account_id, info.wallet_assets, now_ts())?;
         Ok(assets_to_yuan(info.wallet_assets))
@@ -194,14 +204,14 @@ impl ShengsuanyunAuthManager {
 
     /// 登出：删除 Keychain 凭据 + DB 账号 + 绑定记录。幂等。
     pub fn logout(&self, account_id: &str) -> Result<(), String> {
-        creds::delete_api_key(account_id)?;
+        creds::delete_credentials(account_id)?;
         self.db.delete_shengsuanyun_account(account_id)?;
         Ok(())
     }
 
     /// 读取某账号的 API Key（仅供 Provider 写入 live config 使用，不对外暴露给前端）。
     pub fn api_key_for(&self, account_id: &str) -> Result<String, String> {
-        creds::load_api_key(account_id)
+        Ok(creds::load_credentials(account_id)?.api_key)
     }
 }
 

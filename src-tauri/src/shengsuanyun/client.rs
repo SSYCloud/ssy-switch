@@ -81,9 +81,11 @@ impl SsyClient {
             avatar_url: pick_str(data, &["HeadImg", "photoUrl"]),
             wallet_assets: data
                 .pointer("/Wallet/Assets")
+                .or_else(|| data.pointer("/Wallet/assets"))
+                .or_else(|| data.pointer("/wallet/Assets"))
                 .or_else(|| data.pointer("/wallet/assets"))
-                .and_then(Value::as_i64)
-                .unwrap_or(0),
+                .map(flexible_f64)
+                .unwrap_or(0.0),
         })
     }
 
@@ -120,6 +122,15 @@ fn extract_api_key(v: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 上游 Assets 类型不稳定（Go 参考实现 ssyFloat 同时兼容数字与字符串）
+fn flexible_f64(v: &Value) -> f64 {
+    match v {
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        Value::String(s) => s.trim().parse().unwrap_or(0.0),
+        _ => 0.0,
+    }
+}
+
 fn pick_str(v: &Value, keys: &[&str]) -> String {
     for k in keys {
         if let Some(s) = v.get(*k).and_then(Value::as_str) {
@@ -135,6 +146,24 @@ fn pick_str(v: &Value, keys: &[&str]) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn wallet_assets_accepts_string_and_number() {
+        use serde_json::json;
+        let num = json!({"Wallet": {"Assets": 235000}});
+        let s = json!({"Wallet": {"Assets": "235000"}});
+        let lower = json!({"wallet": {"assets": 1500.5}});
+        for v in [&num, &s] {
+            assert_eq!(
+                v.pointer("/Wallet/Assets").map(flexible_f64),
+                Some(235000.0)
+            );
+        }
+        assert_eq!(
+            lower.pointer("/wallet/assets").map(flexible_f64),
+            Some(1500.5)
+        );
+    }
 
     #[test]
     fn api_key_three_layer_fallback() {

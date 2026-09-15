@@ -21,7 +21,7 @@ pub struct ShengsuanyunAccountRow {
     pub email: String,
     pub avatar_url: String,
     pub is_creator: bool,
-    pub balance_assets: Option<i64>,
+    pub balance_assets: Option<f64>,
     pub balance_updated_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -63,7 +63,7 @@ pub struct SsyUserInfo {
     pub avatar_url: String,
     /// 钱包资产（上游原始单位，展示层才换算为元）
     #[serde(default)]
-    pub wallet_assets: i64,
+    pub wallet_assets: f64,
 }
 
 /// 登录会话启动结果（不含任何密钥）
@@ -130,8 +130,8 @@ pub fn mask_email(email: &str) -> String {
 }
 
 /// 上游资产单位 → 元（仅展示层调用，全链路只换算一次）
-pub fn assets_to_yuan(assets: i64) -> f64 {
-    assets as f64 / 10000.0
+pub fn assets_to_yuan(assets: f64) -> f64 {
+    assets / 10000.0
 }
 
 #[cfg(test)]
@@ -152,6 +152,7 @@ mod tests {
 
     #[test]
     fn assets_convert_once() {
-        assert!((assets_to_yuan(235000) - 23.5).abs() < 1e-9);
+        assert!((assets_to_yuan(235000.0) - 23.5).abs() < 1e-9);
+        assert!((assets_to_yuan(1500.5) - 0.15005).abs() < 1e-9);
     }
 }

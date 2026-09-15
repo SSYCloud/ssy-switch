@@ -15,7 +15,7 @@ impl Database {
         id: &str,
         info: &SsyUserInfo,
         is_creator: bool,
-        balance_assets: Option<i64>,
+        balance_assets: Option<f64>,
         now: i64,
     ) -> Result<ShengsuanyunAccountRow, String> {
         let conn = lock_conn!(self.conn);
@@ -123,7 +123,7 @@ impl Database {
     pub fn update_shengsuanyun_balance(
         &self,
         id: &str,
-        balance_assets: i64,
+        balance_assets: f64,
         now: i64,
     ) -> Result<(), String> {
         let conn = lock_conn!(self.conn);
@@ -213,7 +213,7 @@ mod tests {
             display_name: name.into(),
             email: "alice@example.com".into(),
             avatar_url: String::new(),
-            wallet_assets: 235000,
+            wallet_assets: 235000.0,
         }
     }
 
@@ -221,10 +221,10 @@ mod tests {
     fn upsert_replaces_same_uid() {
         let db = Database::memory().unwrap();
         let a = db
-            .upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, Some(1), 100)
+            .upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, Some(1.0), 100)
             .unwrap();
         assert_eq!(a.display_name, "Alice");
-        db.upsert_shengsuanyun_account("id-2", &info("u1", "Alice2"), false, Some(2), 200)
+        db.upsert_shengsuanyun_account("id-2", &info("u1", "Alice2"), false, Some(2.0), 200)
             .unwrap();
         let accounts = db.list_shengsuanyun_accounts().unwrap();
         assert_eq!(accounts.len(), 1);
@@ -265,9 +265,10 @@ mod tests {
         let db = Database::memory().unwrap();
         db.upsert_shengsuanyun_account("id-1", &info("u1", "A"), false, None, 100)
             .unwrap();
-        db.update_shengsuanyun_balance("id-1", 50000, 300).unwrap();
+        db.update_shengsuanyun_balance("id-1", 50000.0, 300)
+            .unwrap();
         let row = db.get_shengsuanyun_account("id-1").unwrap().unwrap();
-        assert_eq!(row.balance_assets, Some(50000));
+        assert_eq!(row.balance_assets, Some(50000.0));
     }
 
     // 让 AppError 在本文件类型上可用（避免未使用导入告警）

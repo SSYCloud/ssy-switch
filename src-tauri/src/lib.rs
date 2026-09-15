@@ -239,6 +239,42 @@ fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> b
     max_level.to_level().is_some_and(|maximum| level <= maximum)
 }
 
+/// 处理 ssyswitch://v1/oauth 深链：仅白名单校验 + 发射 `ssy-oauth-intent` 事件。
+/// 不接受 URL/Key/code/token 等敏感参数；`from` 仅作归因。收到后由前端弹确认再启动登录。
+fn handle_oauth_deeplink(app: &tauri::AppHandle, url_str: &str) -> bool {
+    let Ok(url) = url::Url::parse(url_str) else {
+        return false;
+    };
+    if url.scheme() != "ssyswitch" || url.host_str() != Some("v1") || url.path() != "/oauth" {
+        return false;
+    }
+    let params: std::collections::HashMap<String, String> =
+        url.query_pairs().into_owned().collect();
+
+    let provider = params.get("provider").map(String::as_str).unwrap_or("");
+    if provider != "shengsuanyun" {
+        log::warn!("oauth deep link rejected: unsupported provider {provider:?}");
+        return true; // 是 oauth 深链但非法：消费掉，不落入 import 分支
+    }
+    let app_type = params.get("app").map(String::as_str).unwrap_or("");
+    let allowed = ["claude", "codex", "gemini", ""];
+    if !allowed.contains(&app_type) {
+        log::warn!("oauth deep link rejected: unsupported app {app_type:?}");
+        return true;
+    }
+    let from = params.get("from").cloned().unwrap_or_default();
+    log::info!("oauth deep link accepted: provider={provider} app={app_type:?} from={from}");
+    let _ = app.emit(
+        "ssy-oauth-intent",
+        serde_json::json!({
+            "provider": provider,
+            "appType": app_type,
+            "from": from,
+        }),
+    );
+    true
+}
+
 /// 统一处理 ssyswitch:// 深链接 URL
 ///
 /// - 解析 URL
@@ -258,6 +294,18 @@ fn handle_deeplink_url(
         "✓ Deep link URL detected from {source}: {}",
         url_for_log(url_str)
     );
+
+    // SSY-Switch: OAuth 深链（ssyswitch://v1/oauth?provider=shengsuanyun&app=claude&from=...）
+    // 与 /import 配置导入严格分流，不弹导入确认框。
+    if handle_oauth_deeplink(app, url_str) {
+        if focus_main_window {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+        return true;
+    }
 
     match crate::deeplink::parse_deeplink_url(url_str) {
         Ok(request) => {

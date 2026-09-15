@@ -211,7 +211,7 @@ describe("ProviderForm Codex Official managed account", () => {
     expect(submitted).toEqual(
       expect.objectContaining({
         name: "OpenAI Official (user@example.com)",
-        presetId: "codex-0",
+        presetId: "codex-1",
         presetCategory: "official",
         meta: expect.objectContaining({
           providerType: "codex_oauth",

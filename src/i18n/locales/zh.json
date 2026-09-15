@@ -3261,5 +3261,18 @@
     "expiredHint": "请运行 {{tool}} 命令刷新登录",
     "queryFailed": "查询失败",
     "refresh": "刷新"
+  },
+  "shengsuanyun": {
+    "login": "用胜算云账号登录（无需复制 Key）",
+    "pending": "已在浏览器中打开授权页，请完成登录…",
+    "cancel": "取消登录",
+    "balance": "余额",
+    "refreshBalance": "刷新余额",
+    "relogin": "重新登录",
+    "logout": "退出登录",
+    "failed": "登录失败",
+    "intentPrompt": "收到来自胜算云 Web 的登录请求，是否开始登录并绑定？",
+    "intentConfirm": "开始登录",
+    "intentCancel": "忽略"
   }
 }

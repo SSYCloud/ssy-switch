@@ -3261,5 +3261,18 @@
     "expiredHint": "Run the {{tool}} command to refresh your login",
     "queryFailed": "Query failed",
     "refresh": "Refresh"
+  },
+  "shengsuanyun": {
+    "login": "Log in with Shengsuanyun (no API key copy-paste)",
+    "pending": "Authorization page opened in your browser. Please finish logging in…",
+    "cancel": "Cancel login",
+    "balance": "Balance",
+    "refreshBalance": "Refresh balance",
+    "relogin": "Re-login",
+    "logout": "Log out",
+    "failed": "Login failed",
+    "intentPrompt": "Login request received from Shengsuanyun Web. Start login and binding?",
+    "intentConfirm": "Start login",
+    "intentCancel": "Dismiss"
   }
 }

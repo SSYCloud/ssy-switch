@@ -31,5 +31,5 @@ fn main() {
         }
     }
 
-    cc_switch_lib::run();
+    ssy_switch_lib::run();
 }

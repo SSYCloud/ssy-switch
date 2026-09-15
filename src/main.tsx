@@ -54,7 +54,7 @@ interface ConfigLoadErrorPayload {
 async function handleConfigLoadError(
   payload: ConfigLoadErrorPayload | null,
 ): Promise<void> {
-  const path = payload?.path ?? "~/.cc-switch/config.json";
+  const path = payload?.path ?? "~/.ssy-switch/config.json";
   const detail = payload?.error ?? "Unknown error";
 
   await message(

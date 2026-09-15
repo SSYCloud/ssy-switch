@@ -22,7 +22,7 @@ describe("RoutingActivationBrand", () => {
     expect(
       screen.getByTestId("routing-activation-particles"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "CC Switch" })).toHaveClass(
+    expect(screen.getByRole("link", { name: "SSY-Switch" })).toHaveClass(
       "text-emerald-500",
     );
 

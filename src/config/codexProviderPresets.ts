@@ -175,7 +175,7 @@ export const codexProviderPresets: CodexProviderPreset[] = [
       },
     ]),
     // supportsEffort:true（2026-08-15 盘点）：Kimi 官方 Codex 接入文档
-    //（platform.kimi.com/docs/guide/codex-kimi.md，直接以 CC Switch 为例）
+    //（platform.kimi.com/docs/guide/codex-kimi.md，直接以 SSY-Switch 为例）
     // 要求「支持思考模式 开启 / 支持推理强度 开启」；k3 的 reasoning_effort
     // 是顶层字符串。effortValueMode 不声明=passthrough 原值透传（勿用
     // deepseek 模式，会把 low 压成 high）。注：官方参数页写 k3"不应传入
@@ -243,7 +243,7 @@ export const codexProviderPresets: CodexProviderPreset[] = [
       },
     ]),
     // 官方 Codex 接入文档（kimi.com/code/docs/third-party-tools/codex.html，
-    // 以 CC Switch 为例）：「支持思考模式 开启（必须——关闭后 K3/K2.7 Code
+    // 以 SSY-Switch 为例）：「支持思考模式 开启（必须——关闭后 K3/K2.7 Code
     // 都会被路由到 K2.6）/ 支持思考等级 开启」。effortValueMode 不声明=
     // passthrough；网关自身对 effort 做归一映射（null→high、none→关思考）
     codexChatReasoning: {

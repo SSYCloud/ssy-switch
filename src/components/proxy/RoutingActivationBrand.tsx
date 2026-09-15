@@ -85,7 +85,7 @@ export function RoutingActivationBrand({
       )}
 
       <motion.a
-        href="https://ccswitch.io"
+        href="https://www.shengsuanyun.com"
         target="_blank"
         rel="noreferrer"
         className={cn(
@@ -122,7 +122,7 @@ export function RoutingActivationBrand({
             : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }
         }
       >
-        CC Switch
+        SSY-Switch
       </motion.a>
 
       {showBurst && (

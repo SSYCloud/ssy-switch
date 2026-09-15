@@ -27,7 +27,10 @@ export async function checkForUpdate(
 ): Promise<
   { status: "up-to-date" } | { status: "available"; info: UpdateInfo }
 > {
-  // 动态引入，避免在未安装插件时导致打包期问题
+  // SSY-Switch: 自有更新渠道未就绪前禁用自动更新（P0）。
+  // 上游 CC Switch 的 updater endpoints 已在 tauri.conf.json 中移除。
+  return { status: "up-to-date" };
+  // eslint-disable-next-line no-unreachable
   const { check } = await import("@tauri-apps/plugin-updater");
 
   const currentVersion = await getCurrentVersion();

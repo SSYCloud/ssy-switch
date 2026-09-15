@@ -1,7 +1,7 @@
 {
-  "name": "cc-switch",
+  "name": "ssy-switch",
   "version": "3.20.2",
-  "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
+  "description": "Shengsuanyun desktop client for Claude Code, Codex & Gemini CLI",
   "type": "module",
   "scripts": {
     "dev": "pnpm tauri dev",
@@ -16,7 +16,7 @@
     "test:unit:watch": "vitest watch"
   },
   "keywords": [],
-  "author": "Jason Young",
+  "author": "Shengsuanyun",
   "license": "MIT",
   "packageManager": "pnpm@10.12.3",
   "devDependencies": {

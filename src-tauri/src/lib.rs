@@ -814,6 +814,13 @@ pub fn run() {
                 Err(e) => log::warn!("✗ Failed to seed official providers: {e}"),
             }
 
+            // SSY-Switch：预置胜算云默认卡片（列表首位，Key 留空待登录填充）
+            match app_state.db.init_default_shengsuanyun_providers() {
+                Ok(n) if n > 0 => log::info!("✓ Seeded {n} Shengsuanyun default provider(s)"),
+                Ok(_) => {}
+                Err(e) => log::error!("预置胜算云默认卡片失败: {e}"),
+            }
+
             {
                 let db_for_codex_history_migration = app_state.db.clone();
                 tauri::async_runtime::spawn_blocking(move || {

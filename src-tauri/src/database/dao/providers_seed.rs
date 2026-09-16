@@ -30,6 +30,38 @@ pub(crate) struct OfficialProviderSeed {
 /// Claude / Claude Desktop / Codex / Gemini 的官方预设。
 ///
 /// id 固定，便于幂等检查；name 直接用英文原名（与前端预设一致），不做 i18n。
+/// SSY-Switch：胜算云默认卡片种子（未登录、Key 留空，登录后由 bind 自动填充）。
+/// id 固定 `shengsuanyun`，幂等；配置与前端 preset 保持一致。
+pub(crate) const SHENG_SUANYUN_SEEDS: &[OfficialProviderSeed] = &[
+    OfficialProviderSeed {
+        id: "shengsuanyun",
+        app_type: AppType::Claude,
+        name: "Shengsuanyun",
+        website_url: "https://www.shengsuanyun.com",
+        icon: "shengsuanyun",
+        icon_color: "#16A34A",
+        settings_config_json: r#"{"env":{"ANTHROPIC_BASE_URL":"https://router.shengsuanyun.com/api","ANTHROPIC_AUTH_TOKEN":"","ANTHROPIC_MODEL":"anthropic/claude-sonnet-5","ANTHROPIC_DEFAULT_HAIKU_MODEL":"anthropic/claude-haiku-4.5","ANTHROPIC_DEFAULT_SONNET_MODEL":"anthropic/claude-sonnet-5","ANTHROPIC_DEFAULT_OPUS_MODEL":"anthropic/claude-opus-5"}}"#,
+    },
+    OfficialProviderSeed {
+        id: "shengsuanyun",
+        app_type: AppType::Codex,
+        name: "Shengsuanyun",
+        website_url: "https://www.shengsuanyun.com",
+        icon: "shengsuanyun",
+        icon_color: "#16A34A",
+        settings_config_json: r#"{"auth":{"OPENAI_API_KEY":""},"config":"model_provider = \"custom\"\nmodel = \"openai/gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.custom]\nname = \"shengsuanyun\"\nbase_url = \"https://router.shengsuanyun.com/api/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true"}"#,
+    },
+    OfficialProviderSeed {
+        id: "shengsuanyun",
+        app_type: AppType::Gemini,
+        name: "Shengsuanyun",
+        website_url: "https://www.shengsuanyun.com",
+        icon: "shengsuanyun",
+        icon_color: "#16A34A",
+        settings_config_json: r#"{"env":{"GOOGLE_GEMINI_BASE_URL":"https://router.shengsuanyun.com/api","GEMINI_API_KEY":"","GEMINI_MODEL":"google/gemini-3.6-flash"}}"#,
+    },
+];
+
 pub(crate) const OFFICIAL_SEEDS: &[OfficialProviderSeed] = &[
     OfficialProviderSeed {
         id: "claude-official",

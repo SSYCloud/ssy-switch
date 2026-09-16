@@ -749,6 +749,76 @@ impl Database {
         Ok(inserted)
     }
 
+    /// SSY-Switch 启动时调用：为 Claude / Codex / Gemini 预置"胜算云"默认卡片。
+    ///
+    /// - 独立 flag `shengsuanyun_providers_seeded`，只执行一次
+    /// - 已存在胜算云 Provider（按 base URL 识别，包括 OAuth bind 创建的）则跳过该 App
+    /// - 插入到列表**首位**（sort_index=0，其余顺延），承担"默认卡片"角色
+    /// - 不改变 is_current，激活仍由登录/用户点击完成
+    pub fn init_default_shengsuanyun_providers(&self) -> Result<usize, AppError> {
+        use crate::database::dao::providers_seed::SHENG_SUANYUN_SEEDS;
+
+        if self
+            .get_bool_flag("shengsuanyun_providers_seeded")
+            .unwrap_or(false)
+        {
+            return Ok(0);
+        }
+
+        let mut inserted = 0_usize;
+        let now_ms = chrono::Utc::now().timestamp_millis();
+
+        for seed in SHENG_SUANYUN_SEEDS {
+            let app_type_str = seed.app_type.as_str();
+
+            // 该 App 下已有任何胜算云 Provider（含 OAuth 创建的随机 id 卡片）→ 跳过
+            let existing = self.get_all_providers(app_type_str)?;
+            let has_ssy = existing.values().any(|p| {
+                p.settings_config
+                    .to_string()
+                    .contains("router.shengsuanyun.com")
+                    || p.name.eq_ignore_ascii_case("shengsuanyun")
+            });
+            if has_ssy {
+                continue;
+            }
+
+            // 其余卡片顺延一位，胜算云占首位
+            {
+                let conn = lock_conn!(self.conn);
+                conn.execute(
+                    "UPDATE providers SET sort_index = sort_index + 1 WHERE app_type = ?1",
+                    params![app_type_str],
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            }
+
+            let settings_config: serde_json::Value =
+                serde_json::from_str(seed.settings_config_json).map_err(|e| {
+                    AppError::Database(format!("Seed JSON parse failed for {}: {e}", seed.id))
+                })?;
+
+            let mut provider = Provider::with_id(
+                seed.id.to_string(),
+                seed.name.to_string(),
+                settings_config,
+                Some(seed.website_url.to_string()),
+            );
+            provider.category = Some("aggregator".to_string());
+            provider.icon = Some(seed.icon.to_string());
+            provider.icon_color = Some(seed.icon_color.to_string());
+            provider.sort_index = Some(0);
+            provider.created_at = Some(now_ms);
+
+            self.save_provider(app_type_str, &provider)?;
+            inserted += 1;
+            log::info!("✓ Seeded Shengsuanyun default provider for {app_type_str} (top of list)");
+        }
+
+        self.set_setting("shengsuanyun_providers_seeded", "true")?;
+        Ok(inserted)
+    }
+
     /// 按 id 兜底插入单条 official seed（仅当目标表中该 id 不存在时插入）。
     ///
     /// 与 `init_default_official_providers` 不同：
@@ -923,5 +993,57 @@ mod ensure_official_seed_tests {
         let result =
             db.ensure_official_seed_by_id(CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, AppType::Claude);
         assert!(result.is_err(), "(id, app_type) mismatch should be Err");
+    }
+}
+
+#[cfg(test)]
+mod shengsuanyun_seed_tests {
+    use super::*;
+
+    #[test]
+    #[serial_test::serial]
+    fn seeds_once_and_skips_existing_ssy() {
+        let db = Database::memory().expect("memory db");
+        let n = db.init_default_shengsuanyun_providers().expect("seed ssy");
+        assert_eq!(n, 3); // claude + codex + gemini
+                          // 第二次：flag 已置位，不再插入
+        assert_eq!(db.init_default_shengsuanyun_providers().unwrap(), 0);
+
+        let providers = db.get_all_providers("claude").unwrap();
+        let ssy = providers.get("shengsuanyun").expect("seeded card");
+        assert_eq!(ssy.sort_index, Some(0));
+        assert!(ssy
+            .settings_config
+            .pointer("/env/ANTHROPIC_BASE_URL")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains("router.shengsuanyun.com"));
+        // 原 official 卡被顺延
+        db.init_default_official_providers().unwrap();
+        let providers = db.get_all_providers("claude").unwrap();
+        let official = providers.get("claude-official").expect("official");
+        assert!(official.sort_index.unwrap_or(0) >= 1);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skips_app_with_oauth_created_ssy_card() {
+        let db = Database::memory().expect("memory db");
+        // 模拟 OAuth bind 已创建随机 id 的胜算云卡片
+        let mut p = Provider::with_id(
+            "ssy-random".into(),
+            "Shengsuanyun".into(),
+            serde_json::json!({"env":{"ANTHROPIC_BASE_URL":"https://router.shengsuanyun.com/api"}}),
+            None,
+        );
+        p.sort_index = Some(0);
+        db.save_provider("claude", &p).unwrap();
+
+        let n = db.init_default_shengsuanyun_providers().unwrap();
+        // claude 跳过（已有），codex/gemini 仍会 seed
+        assert_eq!(n, 2);
+        let providers = db.get_all_providers("claude").unwrap();
+        assert!(providers.get("shengsuanyun").is_none());
     }
 }

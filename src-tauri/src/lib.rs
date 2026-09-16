@@ -1188,6 +1188,41 @@ pub fn run() {
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state);
 
+            // SSY-Switch 启动对账：已登录但没有任何绑定时（如旧版本登录、
+            // 或绑定存储切换后），自动为 Claude/Codex/Gemini 三端补齐绑定并激活
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    use tauri::Manager;
+                    let Some(app_state) = handle.try_state::<crate::store::AppState>() else {
+                        return;
+                    };
+                    let Ok(accounts) = app_state.db.list_shengsuanyun_accounts() else {
+                        return;
+                    };
+                    let Some(account) = accounts.first() else { return };
+                    let Ok(bindings) = app_state.db.list_shengsuanyun_bindings() else {
+                        return;
+                    };
+                    if !bindings.is_empty() {
+                        return;
+                    }
+                    log::info!("SSY-Switch: 检测到已登录但未绑定，自动补齐三端胜算云绑定");
+                    for app_type in ["claude", "codex", "gemini"] {
+                        match commands::bind_account_internal(
+                            app_state.inner(),
+                            app_type,
+                            &account.id,
+                            true,
+                            false,
+                        ) {
+                            Ok(r) => log::info!("SSY 自动绑定 {app_type}: {}", r.status),
+                            Err(e) => log::error!("SSY 自动绑定 {app_type} 失败: {e}"),
+                        }
+                    }
+                });
+            }
+
             // 初始化 SkillService
             let skill_service = SkillService::new();
             app.manage(commands::skill::SkillServiceState(Arc::new(skill_service)));
@@ -1469,6 +1504,7 @@ pub fn run() {
             commands::read_live_provider_settings,
             commands::shengsuanyun_start_login,
             commands::shengsuanyun_bind_account,
+            commands::shengsuanyun_bind_all_apps,
             commands::shengsuanyun_cancel_login,
             commands::shengsuanyun_list_accounts,
             commands::shengsuanyun_get_status,

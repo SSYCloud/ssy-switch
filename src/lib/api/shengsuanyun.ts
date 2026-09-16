@@ -59,6 +59,12 @@ export function logoutShengsuanyun(accountId: string): Promise<void> {
   return invoke("shengsuanyun_logout", { accountId });
 }
 
+export function bindShengsuanyunAllApps(
+  accountId: string,
+): Promise<ShengsuanyunBindResult[]> {
+  return invoke("shengsuanyun_bind_all_apps", { accountId });
+}
+
 export function bindShengsuanyunAccount(
   appType: string,
   accountId: string,
@@ -81,4 +87,5 @@ export const shengsuanyunApi = {
   refreshBalance: refreshShengsuanyunBalance,
   logout: logoutShengsuanyun,
   bindAccount: bindShengsuanyunAccount,
+  bindAllApps: bindShengsuanyunAllApps,
 };

@@ -108,31 +108,46 @@ pub async fn shengsuanyun_logout(
     state.manager.logout(&account_id)
 }
 
-/// 绑定账号到目标 App 的胜算云 Provider：写入 API Key 并（可选）激活。
+/// 绑定核心逻辑（同步，供命令层与启动对账复用）。
 ///
-/// - 查找该 App 下已有的 Shengsuanyun Provider（按 base URL 识别）；
-/// - 不静默覆盖已有不同 Key：`overwrite: false` 且当前 Key 非空时返回冲突；
-/// - 只更新目标 Provider，不影响其他供应商。
-#[tauri::command(rename_all = "camelCase")]
-pub async fn shengsuanyun_bind_account(
-    app_handle: tauri::AppHandle,
-    state: State<'_, ShengsuanyunState>,
-    app_type: String,
-    account_id: String,
-    activate: Option<bool>,
-    overwrite: Option<bool>,
+/// 行为与 `shengsuanyun_bind_account` 命令一致：查找或创建目标 App 的胜算云
+/// Provider，写入凭据；`overwrite=false` 时不覆盖已有不同 Key（返回 conflict）。
+///
+/// 凭据取自 shengsuanyun_credentials 表（与 CC Switch 一致的自家存储）。
+pub fn bind_account_internal(
+    app_state: &crate::store::AppState,
+    app_type: &str,
+    account_id: &str,
+    activate: bool,
+    overwrite: bool,
 ) -> Result<ShengsuanyunBindResult, String> {
-    let api_key = state.manager.api_key_for(&account_id)?;
-    let activate = activate.unwrap_or(true);
-    let overwrite = overwrite.unwrap_or(false);
+    {
+        let creds =
+            crate::shengsuanyun::credential_store::load_credentials(&app_state.db, account_id)?;
+        run_bind(
+            app_state,
+            app_type,
+            account_id,
+            &creds.api_key,
+            activate,
+            overwrite,
+        )
+    }
+}
 
-    tauri::async_runtime::spawn_blocking(move || {
-        use tauri::Manager;
-        let app_state = app_handle.state::<crate::store::AppState>();
+fn run_bind(
+    app_state: &crate::store::AppState,
+    app_type: &str,
+    account_id: &str,
+    api_key: &str,
+    activate: bool,
+    overwrite: bool,
+) -> Result<ShengsuanyunBindResult, String> {
+    {
         use std::str::FromStr;
-        let at = crate::app_config::AppType::from_str(&app_type).map_err(|e| e.to_string())?;
+        let at = crate::app_config::AppType::from_str(app_type).map_err(|e| e.to_string())?;
 
-        let providers = crate::services::provider::ProviderService::list(&app_state, at.clone())
+        let providers = crate::services::provider::ProviderService::list(app_state, at.clone())
             .map_err(|e| e.to_string())?;
         let (provider_id, mut provider, existing_key) =
             match find_shengsuanyun_provider(providers, &at) {
@@ -140,9 +155,9 @@ pub async fn shengsuanyun_bind_account(
                 // 查找或创建（幂等）：不存在时按官方 preset 模板创建胜算云 Provider，
                 // base URL / 模型用 preset 值，Key 用 OAuth 凭据。
                 None => {
-                    let created = new_shengsuanyun_provider(&at, &api_key);
+                    let created = new_shengsuanyun_provider(&at, api_key);
                     crate::services::provider::ProviderService::add(
-                        &app_state,
+                        app_state,
                         at.clone(),
                         created.clone(),
                         false,
@@ -159,9 +174,9 @@ pub async fn shengsuanyun_bind_account(
                 account_id: None,
             });
         }
-        write_token(&mut provider, &at, &api_key)?;
+        write_token(&mut provider, &at, api_key)?;
         crate::services::provider::ProviderService::update(
-            &app_state,
+            app_state,
             at.clone(),
             Some(&provider_id),
             provider,
@@ -172,24 +187,76 @@ pub async fn shengsuanyun_bind_account(
         app_state.db.upsert_shengsuanyun_binding(
             at.as_str(),
             &provider_id,
-            &account_id,
+            account_id,
             "oauth",
             now,
         )?;
 
         if activate {
-            crate::services::provider::ProviderService::switch(&app_state, at, &provider_id)
+            crate::services::provider::ProviderService::switch(app_state, at, &provider_id)
                 .map_err(|e| e.to_string())?;
         }
 
         Ok(ShengsuanyunBindResult {
             status: "ok".into(),
             provider_id: Some(provider_id),
-            account_id: Some(account_id),
+            account_id: Some(account_id.to_string()),
         })
+    }
+}
+
+/// 单 App 绑定命令（前端按钮 / 自动绑定共用）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_bind_account(
+    app_handle: tauri::AppHandle,
+    app_type: String,
+    account_id: String,
+    activate: Option<bool>,
+    overwrite: Option<bool>,
+) -> Result<ShengsuanyunBindResult, String> {
+    let activate = activate.unwrap_or(true);
+    let overwrite = overwrite.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let app_state = app_handle.state::<crate::store::AppState>();
+        bind_account_internal(
+            app_state.inner(),
+            &app_type,
+            &account_id,
+            activate,
+            overwrite,
+        )
     })
     .await
     .map_err(|e| format!("绑定任务执行失败: {e}"))?
+}
+
+/// 一键绑定 Claude / Codex / Gemini 三端并激活（登录后无目标 App 上下文时使用）。
+///
+/// 单端失败不中断其余两端，失败项以 status = "error" 返回。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_bind_all_apps(
+    app_handle: tauri::AppHandle,
+    account_id: String,
+) -> Result<Vec<ShengsuanyunBindResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let app_state = app_handle.state::<crate::store::AppState>();
+        ["claude", "codex", "gemini"]
+            .iter()
+            .map(|app| {
+                bind_account_internal(app_state.inner(), app, &account_id, true, false).unwrap_or(
+                    ShengsuanyunBindResult {
+                        status: "error".into(),
+                        provider_id: None,
+                        account_id: None,
+                    },
+                )
+            })
+            .collect::<Vec<_>>()
+    })
+    .await
+    .map_err(|e| format!("绑定任务执行失败: {e}"))
 }
 
 #[derive(serde::Serialize)]

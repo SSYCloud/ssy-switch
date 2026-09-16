@@ -3277,7 +3277,7 @@
     "bannerTitle": "Connect Shengsuanyun — one-click login",
     "bannerBody": "No API key copy-paste needed{0}. Log in via browser and we bind & activate automatically.",
     "bannerCta": "Log in with Shengsuanyun",
-    "bindConflict": "This app already has a manually configured key and was not overwritten. Confirm in provider settings before binding.",
+    "bindConflict": "Some apps have manually configured keys and were not overwritten. Confirm in provider settings before binding.",
     "bindTo": "Bind & activate"
   }
 }

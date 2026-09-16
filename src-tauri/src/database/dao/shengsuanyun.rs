@@ -275,3 +275,77 @@ mod tests {
     #[allow(dead_code)]
     fn _unused(_: AppError) {}
 }
+
+// ============ 凭据存储（与 CC Switch 一致：Key 存本库，不依赖 OS Keychain） ============
+
+impl Database {
+    pub fn save_shengsuanyun_credentials(
+        &self,
+        account_id: &str,
+        api_key: &str,
+        jwt_token: &str,
+    ) -> Result<(), String> {
+        let now = chrono::Utc::now().timestamp();
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "INSERT INTO shengsuanyun_credentials (account_id, api_key, jwt_token, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(account_id) DO UPDATE SET
+               api_key = excluded.api_key,
+               jwt_token = excluded.jwt_token,
+               updated_at = excluded.updated_at",
+            params![account_id, api_key, jwt_token, now],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn load_shengsuanyun_credentials(
+        &self,
+        account_id: &str,
+    ) -> Result<(String, String), String> {
+        let conn = lock_conn!(self.conn);
+        conn.query_row(
+            "SELECT api_key, jwt_token FROM shengsuanyun_credentials WHERE account_id = ?1",
+            params![account_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn delete_shengsuanyun_credentials(&self, account_id: &str) -> Result<(), String> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "DELETE FROM shengsuanyun_credentials WHERE account_id = ?1",
+            params![account_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+
+    #[test]
+    fn credentials_crud_roundtrip() {
+        let db = Database::memory().unwrap();
+        db.save_shengsuanyun_credentials("a1", "sk-1", "jwt-1")
+            .unwrap();
+        assert_eq!(
+            db.load_shengsuanyun_credentials("a1").unwrap(),
+            ("sk-1".into(), "jwt-1".into())
+        );
+        // upsert 覆盖
+        db.save_shengsuanyun_credentials("a1", "sk-2", "").unwrap();
+        assert_eq!(
+            db.load_shengsuanyun_credentials("a1").unwrap(),
+            ("sk-2".into(), String::new())
+        );
+        db.delete_shengsuanyun_credentials("a1").unwrap();
+        assert!(db.load_shengsuanyun_credentials("a1").is_err());
+        // 删除幂等
+        db.delete_shengsuanyun_credentials("a1").unwrap();
+    }
+}

@@ -1609,6 +1609,16 @@ impl Database {
             [],
         )?;
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS shengsuanyun_credentials (
+                account_id TEXT PRIMARY KEY,
+                api_key TEXT NOT NULL,
+                jwt_token TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS shengsuanyun_provider_bindings (
                 app_type TEXT NOT NULL,
                 provider_id TEXT NOT NULL,
@@ -1624,7 +1634,7 @@ impl Database {
     }
 
     fn migrate_v18_to_v19(conn: &Connection) -> Result<(), AppError> {
-        // SSY-Switch: 胜算云账号元数据与 Provider 绑定。API Key 存 OS Keychain，不入库。
+        // SSY-Switch: 胜算云账号元数据、凭据与 Provider 绑定（Key 存本库，与 CC Switch 一致）。
         Self::create_shengsuanyun_tables(conn)
     }
 

@@ -39,8 +39,14 @@ export function ShengsuanyunLoginBanner({
 
   const appNameMap: Record<string, string> = {
     claude: "Claude Code",
+    "claude-desktop": "Claude Desktop",
     codex: "Codex",
     gemini: "Gemini CLI",
+    grokbuild: "Grok Build",
+    opencode: "OpenCode",
+    openclaw: "OpenClaw",
+    hermes: "Hermes",
+    pi: "Pi",
   };
   const appName = appNameMap[appId];
 

@@ -257,7 +257,18 @@ fn handle_oauth_deeplink(app: &tauri::AppHandle, url_str: &str) -> bool {
         return true; // 是 oauth 深链但非法：消费掉，不落入 import 分支
     }
     let app_type = params.get("app").map(String::as_str).unwrap_or("");
-    let allowed = ["claude", "codex", "gemini", ""];
+    let allowed = [
+        "claude",
+        "claude-desktop",
+        "codex",
+        "gemini",
+        "grokbuild",
+        "opencode",
+        "openclaw",
+        "hermes",
+        "pi",
+        "",
+    ];
     if !allowed.contains(&app_type) {
         log::warn!("oauth deep link rejected: unsupported app {app_type:?}");
         return true;
@@ -1204,11 +1215,12 @@ pub fn run() {
                     let Ok(bindings) = app_state.db.list_shengsuanyun_bindings() else {
                         return;
                     };
-                    if !bindings.is_empty() {
-                        return;
-                    }
-                    log::info!("SSY-Switch: 检测到已登录但未绑定，自动补齐三端胜算云绑定");
-                    for app_type in ["claude", "codex", "gemini"] {
+                    for app_type in commands::SSY_ALL_APPS {
+                        // 按 App 逐个补账：该 App 尚无绑定时才绑定（不重复、不覆盖）
+                        if bindings.iter().any(|b| b.app_type == *app_type) {
+                            continue;
+                        }
+                        log::info!("SSY-Switch: {app_type} 未绑定胜算云，自动补齐");
                         match commands::bind_account_internal(
                             app_state.inner(),
                             app_type,

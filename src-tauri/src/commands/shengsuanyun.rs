@@ -242,7 +242,7 @@ pub async fn shengsuanyun_bind_all_apps(
     tauri::async_runtime::spawn_blocking(move || {
         use tauri::Manager;
         let app_state = app_handle.state::<crate::store::AppState>();
-        ["claude", "codex", "gemini"]
+        SSY_ALL_APPS
             .iter()
             .map(|app| {
                 bind_account_internal(app_state.inner(), app, &account_id, true, false).unwrap_or(
@@ -285,30 +285,39 @@ fn find_shengsuanyun_provider(
     None
 }
 
-fn token_field_for(at: &crate::app_config::AppType) -> &'static str {
+/// 胜算云一键绑定覆盖的全部宿主（与 AppType 一一对应，共 9 个）
+pub const SSY_ALL_APPS: &[&str] = &[
+    "claude",
+    "claude-desktop",
+    "codex",
+    "gemini",
+    "grokbuild",
+    "opencode",
+    "openclaw",
+    "hermes",
+    "pi",
+];
+
+/// 各宿主 settingsConfig 中胜算云 Key 的 JSON pointer 路径（与前端 preset 一一对应）
+fn token_pointer(at: &crate::app_config::AppType) -> &'static str {
+    use crate::app_config::AppType;
     match at {
-        crate::app_config::AppType::Claude => "ANTHROPIC_AUTH_TOKEN",
-        crate::app_config::AppType::Codex => "OPENAI_API_KEY",
-        _ => "GEMINI_API_KEY",
+        AppType::Claude | AppType::ClaudeDesktop => "/env/ANTHROPIC_AUTH_TOKEN",
+        AppType::Codex | AppType::GrokBuild => "/auth/OPENAI_API_KEY",
+        AppType::Gemini => "/env/GEMINI_API_KEY",
+        AppType::OpenCode => "/options/apiKey",
+        AppType::OpenClaw => "/apiKey",
+        AppType::Hermes => "/api_key",
+        AppType::Pi => "/apiKey",
     }
 }
 
 fn read_token(p: &crate::provider::Provider, at: &crate::app_config::AppType) -> String {
-    let field = token_field_for(at);
-    match at {
-        crate::app_config::AppType::Codex => p
-            .settings_config
-            .pointer(&format!("/auth/{field}"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        _ => p
-            .settings_config
-            .pointer(&format!("/env/{field}"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-    }
+    p.settings_config
+        .pointer(token_pointer(at))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
 }
 
 fn write_token(
@@ -316,25 +325,27 @@ fn write_token(
     at: &crate::app_config::AppType,
     api_key: &str,
 ) -> Result<(), String> {
-    let field = token_field_for(at);
-    let (container, leaf) = match at {
-        crate::app_config::AppType::Codex => ("auth", field),
-        _ => ("env", field),
-    };
-    let root = p
+    let pointer = token_pointer(at);
+    let segments: Vec<&str> = pointer.trim_start_matches('/').split('/').collect();
+    let root_obj = p
         .settings_config
         .as_object()
         .cloned()
         .ok_or("settingsConfig 格式异常")?;
-    let mut root = serde_json::Map::from_iter(root);
-    let inner = root
-        .entry(container.to_string())
-        .or_insert_with(|| serde_json::Value::Object(Default::default()));
-    if !inner.is_object() {
-        return Err("settingsConfig 路径冲突".into());
+    let mut root = serde_json::Map::from_iter(root_obj);
+    // 沿 pointer 逐级确保对象存在
+    let mut cur = &mut root;
+    for seg in &segments[..segments.len() - 1] {
+        let node = cur
+            .entry(seg.to_string())
+            .or_insert_with(|| serde_json::Value::Object(Default::default()));
+        if !node.is_object() {
+            return Err("settingsConfig 路径冲突".into());
+        }
+        cur = node.as_object_mut().expect("checked above");
     }
-    inner.as_object_mut().expect("checked above").insert(
-        leaf.to_string(),
+    cur.insert(
+        segments[segments.len() - 1].to_string(),
         serde_json::Value::String(api_key.to_string()),
     );
     p.settings_config = serde_json::Value::Object(root);
@@ -348,38 +359,63 @@ fn new_shengsuanyun_provider(
 ) -> crate::provider::Provider {
     use crate::app_config::AppType;
 
-    let (settings, name) = match at {
-        AppType::Claude => (
-            serde_json::json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://router.shengsuanyun.com/api",
-                    "ANTHROPIC_AUTH_TOKEN": api_key,
-                    "ANTHROPIC_MODEL": "anthropic/claude-sonnet-5",
-                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "anthropic/claude-haiku-4.5",
-                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "anthropic/claude-sonnet-5",
-                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-5"
-                }
-            }),
-            "Shengsuanyun",
-        ),
-        AppType::Codex => (
-            serde_json::json!({
-                "auth": { "OPENAI_API_KEY": api_key },
-                "config": "model_provider = \"custom\"\nmodel = \"openai/gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.custom]\nname = \"shengsuanyun\"\nbase_url = \"https://router.shengsuanyun.com/api/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true"
-            }),
-            "Shengsuanyun",
-        ),
-        _ => (
-            serde_json::json!({
-                "env": {
-                    "GOOGLE_GEMINI_BASE_URL": "https://router.shengsuanyun.com/api",
-                    "GEMINI_API_KEY": api_key,
-                    "GEMINI_MODEL": "google/gemini-3.6-flash"
-                }
-            }),
-            "Shengsuanyun",
-        ),
+    let settings = match at {
+        AppType::Claude | AppType::ClaudeDesktop => serde_json::json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://router.shengsuanyun.com/api",
+                "ANTHROPIC_AUTH_TOKEN": api_key,
+                "ANTHROPIC_MODEL": "anthropic/claude-sonnet-5",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "anthropic/claude-haiku-4.5",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "anthropic/claude-sonnet-5",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-5"
+            }
+        }),
+        AppType::Codex | AppType::GrokBuild => serde_json::json!({
+            "auth": { "OPENAI_API_KEY": api_key },
+            "config": "model_provider = \"custom\"\nmodel = \"openai/gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.custom]\nname = \"shengsuanyun\"\nbase_url = \"https://router.shengsuanyun.com/api/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true"
+        }),
+        AppType::Gemini => serde_json::json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://router.shengsuanyun.com/api",
+                "GEMINI_API_KEY": api_key,
+                "GEMINI_MODEL": "google/gemini-3.6-flash"
+            }
+        }),
+        // OpenCode：settingsConfig 根即 provider 定义（npm/options/models）
+        AppType::OpenCode => serde_json::json!({
+            "npm": "@ai-sdk/anthropic",
+            "name": "Shengsuanyun",
+            "options": {
+                "baseURL": "https://router.shengsuanyun.com/api/v1",
+                "apiKey": api_key,
+                "setCacheKey": true
+            },
+            "models": {
+                "anthropic/claude-opus-5": { "name": "Claude Opus 5" },
+                "anthropic/claude-sonnet-5": { "name": "Claude Sonnet 5" }
+            }
+        }),
+        // OpenClaw / Pi：扁平 { baseUrl, apiKey, api, models }
+        AppType::OpenClaw | AppType::Pi => serde_json::json!({
+            "name": "Shengsuanyun",
+            "baseUrl": "https://router.shengsuanyun.com/api",
+            "apiKey": api_key,
+            "api": "anthropic-messages",
+            "models": [
+                { "id": "anthropic/claude-opus-5", "name": "Claude Opus 5" },
+                { "id": "anthropic/claude-sonnet-5", "name": "Claude Sonnet 5" }
+            ]
+        }),
+        // Hermes：snake_case { base_url, api_key, api_mode, models }
+        AppType::Hermes => serde_json::json!({
+            "name": "shengsuanyun",
+            "base_url": "https://router.shengsuanyun.com/api/v1",
+            "api_key": api_key,
+            "api_mode": "chat_completions",
+            "models": [ { "id": "openai/gpt-5.6-sol", "name": "GPT-5.6 Sol" } ]
+        }),
     };
+    let name = "Shengsuanyun";
     crate::provider::Provider {
         id: format!("ssy-{}", uuid::Uuid::new_v4()),
         name: name.into(),
@@ -468,14 +504,16 @@ mod tests {
     }
 
     #[test]
-    fn template_carries_key_and_base_url() {
-        for at in [AppType::Claude, AppType::Codex, AppType::Gemini] {
+    fn template_carries_key_and_base_url_for_all_hosts() {
+        use std::str::FromStr;
+        for app in SSY_ALL_APPS {
+            let at = AppType::from_str(app).expect("valid app");
             let p = new_shengsuanyun_provider(&at, "sk-x");
             let cfg = p.settings_config.to_string();
-            assert!(cfg.contains("router.shengsuanyun.com"), "{at:?}");
-            assert!(cfg.contains("sk-x"), "{at:?}");
-            // 写入 token 后仍可再定位
-            assert!(!read_token(&p, &at).is_empty());
+            assert!(cfg.contains("router.shengsuanyun.com"), "{app}");
+            assert!(cfg.contains("sk-x"), "{app}");
+            // 模板自带的 Key 可通过 pointer 读回（写入路径正确性验证）
+            assert_eq!(read_token(&p, &at), "sk-x", "{app}");
         }
     }
 

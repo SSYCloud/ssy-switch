@@ -1005,7 +1005,7 @@ mod shengsuanyun_seed_tests {
     fn seeds_once_and_skips_existing_ssy() {
         let db = Database::memory().expect("memory db");
         let n = db.init_default_shengsuanyun_providers().expect("seed ssy");
-        assert_eq!(n, 3); // claude + codex + gemini
+        assert_eq!(n, 9); // 全部 9 个宿主
                           // 第二次：flag 已置位，不再插入
         assert_eq!(db.init_default_shengsuanyun_providers().unwrap(), 0);
 
@@ -1041,8 +1041,8 @@ mod shengsuanyun_seed_tests {
         db.save_provider("claude", &p).unwrap();
 
         let n = db.init_default_shengsuanyun_providers().unwrap();
-        // claude 跳过（已有），codex/gemini 仍会 seed
-        assert_eq!(n, 2);
+        // claude 跳过（已有），其余 8 个宿主仍会 seed
+        assert_eq!(n, 8);
         let providers = db.get_all_providers("claude").unwrap();
         assert!(providers.get("shengsuanyun").is_none());
     }

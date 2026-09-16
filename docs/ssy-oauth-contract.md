@@ -53,7 +53,7 @@ x-token: <api_key>
 |---|---|
 | state | UUID v4，5 分钟 TTL，一次性消费，绑定回调端口 |
 | 回调监听 | `127.0.0.1:0` 随机端口，独立于本地代理，仅 `/auth/shengsuanyun/callback` |
-| API Key 存储 | OS Keychain（keyring crate），不入 SQLite/日志/事件 |
+| API Key 存储 | 自家 SQLite `shengsuanyun_credentials` 表（与 CC Switch 一致，用户决策 2026-09-16）；**注意：DB 导出/云同步会包含凭据** |
 | 事件 payload | 仅脱敏账号（uid/email 打码） |
 | 深链 | `ssyswitch://v1/oauth?provider=shengsuanyun&app={claude\|codex\|gemini}&from=<归因>`，白名单校验，前端确认后才启动 |
 
@@ -62,5 +62,6 @@ x-token: <api_key>
 - [ ] `/auth` 是否支持并回传 `state`
 - [ ] `/auth/keys` 在 loopback callback 下的真实响应结构与错误码
 - [ ] `Wallet.Assets` 的精确单位与币种
+- [ ] `/user/info` 是否有稳定的用户标识字段（当前 uid 可能为空，影响同账号幂等覆盖）
 - [ ] code TTL、单次使用、错误码语义
 - [ ] 401/402/429/5xx 错误码与文案（用于错误诊断映射）

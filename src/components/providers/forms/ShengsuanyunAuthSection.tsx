@@ -175,6 +175,27 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     }
   };
 
+  // 手动绑定：查找或创建目标 App 的胜算云 Provider，写入 Key 并激活
+  const bindToApp = async (appType: string, accountId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await shengsuanyunApi.bindAccount(appType, accountId);
+      if (result.status === "conflict") {
+        setError(
+          t("shengsuanyun.bindConflict", {
+            defaultValue:
+              "该应用已有手动配置的 Key，未自动覆盖。请重试并选择覆盖，或在供应商设置中确认。",
+          }),
+        );
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loginPending = phase === "pending";
 
   return (
@@ -263,6 +284,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
               </span>
             </div>
           </div>
+          <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -292,6 +314,26 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             >
               <LogOut className="h-4 w-4" />
             </Button>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{t("shengsuanyun.bindTo", { defaultValue: "绑定并激活" })}:</span>
+            {(["claude", "codex", "gemini"] as const).map((appType) => (
+              <Button
+                key={appType}
+                variant="secondary"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                disabled={busy}
+                onClick={() => bindToApp(appType, a.id)}
+              >
+                {appType === "claude"
+                  ? "Claude"
+                  : appType === "codex"
+                    ? "Codex"
+                    : "Gemini"}
+              </Button>
+            ))}
+          </div>
           </div>
         </div>
       ))}

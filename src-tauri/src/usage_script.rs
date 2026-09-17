@@ -6,6 +6,7 @@ use url::{Host, Url};
 use crate::error::AppError;
 
 /// 执行用量查询脚本
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_usage_script(
     script_code: &str,
     api_key: &str,
@@ -14,14 +15,21 @@ pub async fn execute_usage_script(
     access_token: Option<&str>,
     user_id: Option<&str>,
     template_type: Option<&str>,
+    ssy_jwt: Option<&str>,
 ) -> Result<Value, AppError> {
     // 检测是否为自定义模板模式
     // 优先使用前端传递的 template_type
     let is_custom_template = template_type.map(|t| t == "custom").unwrap_or(false);
 
     // 1. 替换模板变量，避免泄露敏感信息
-    let script_with_vars =
-        build_script_with_vars(script_code, api_key, base_url, access_token, user_id);
+    let script_with_vars = build_script_with_vars(
+        script_code,
+        api_key,
+        base_url,
+        access_token,
+        user_id,
+        ssy_jwt,
+    );
 
     // 2. 验证 base_url 的安全性（仅当提供了 base_url 时）
     // 自定义模板模式下，用户可能不使用模板变量，而是直接在脚本中写完整 URL
@@ -421,6 +429,26 @@ fn validate_single_usage(result: &Value) -> Result<(), AppError> {
     Ok(())
 }
 
+#[cfg(test)]
+mod var_tests {
+    use super::build_script_with_vars;
+
+    #[test]
+    fn shengsuanyun_jwt_variable_is_substituted() {
+        let script = r#"({"request":{"headers":{"x-token":"{{shengsuanyunJwt}}"}}})"#;
+        let out = build_script_with_vars(script, "ak", "https://x", None, None, Some("jwt-1"));
+        assert!(out.contains("jwt-1"));
+        assert!(!out.contains("{{shengsuanyunJwt}}"));
+    }
+
+    #[test]
+    fn shengsuanyun_jwt_variable_left_when_absent() {
+        let script = r#"({{shengsuanyunJwt}})"#;
+        let out = build_script_with_vars(script, "ak", "https://x", None, None, None);
+        assert!(out.contains("{{shengsuanyunJwt}}"));
+    }
+}
+
 /// 构建替换变量后的脚本，保持与旧版脚本的兼容性
 fn build_script_with_vars(
     script_code: &str,
@@ -428,6 +456,7 @@ fn build_script_with_vars(
     base_url: &str,
     access_token: Option<&str>,
     user_id: Option<&str>,
+    ssy_jwt: Option<&str>,
 ) -> String {
     let mut replaced = script_code
         .replace("{{apiKey}}", api_key)
@@ -438,6 +467,10 @@ fn build_script_with_vars(
     }
     if let Some(uid) = user_id {
         replaced = replaced.replace("{{userId}}", uid);
+    }
+    // SSY-Switch: 胜算云 /user/info 只认 OAuth jwt，不认模型网关 Key
+    if let Some(jwt) = ssy_jwt {
+        replaced = replaced.replace("{{shengsuanyunJwt}}", jwt);
     }
 
     replaced

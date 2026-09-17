@@ -9,7 +9,28 @@ use crate::settings;
 use crate::store::AppState;
 use crate::usage_script;
 
+/// 胜算云 Provider 的用量脚本可注入 OAuth jwt（/user/info 只认 jwt，不认网关 Key）。
+/// 非胜算云 Provider 或未登录时返回 None，脚本中变量保持原样。
+fn shengsuanyun_jwt_for(state: &AppState, provider: &crate::provider::Provider) -> Option<String> {
+    if !provider
+        .settings_config
+        .to_string()
+        .contains("router.shengsuanyun.com")
+    {
+        return None;
+    }
+    let account = state
+        .db
+        .list_shengsuanyun_accounts()
+        .ok()?
+        .into_iter()
+        .next()?;
+    let (api_key, jwt) = state.db.load_shengsuanyun_credentials(&account.id).ok()?;
+    Some(if jwt.is_empty() { api_key } else { jwt })
+}
+
 /// Execute usage script and format result (private helper method)
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_and_format_usage_result(
     script_code: &str,
     api_key: &str,
@@ -18,6 +39,7 @@ pub(crate) async fn execute_and_format_usage_result(
     access_token: Option<&str>,
     user_id: Option<&str>,
     template_type: Option<&str>,
+    ssy_jwt: Option<&str>,
 ) -> Result<UsageResult, AppError> {
     match usage_script::execute_usage_script(
         script_code,
@@ -27,6 +49,7 @@ pub(crate) async fn execute_and_format_usage_result(
         access_token,
         user_id,
         template_type,
+        ssy_jwt,
     )
     .await
     {
@@ -128,7 +151,7 @@ pub async fn query_usage(
     app_type: AppType,
     provider_id: &str,
 ) -> Result<UsageResult, AppError> {
-    let (script_code, timeout, api_key, base_url, access_token, user_id, template_type) = {
+    let (script_code, timeout, api_key, base_url, access_token, user_id, template_type, ssy_jwt) = {
         let providers = state.db.get_all_providers(app_type.as_str())?;
         let provider = providers.get(provider_id).ok_or_else(|| {
             AppError::localized(
@@ -165,6 +188,8 @@ pub async fn query_usage(
             usage_script.base_url.as_deref(),
         );
 
+        let ssy_jwt = shengsuanyun_jwt_for(state, provider);
+
         (
             usage_script.code.clone(),
             usage_script.timeout.unwrap_or(10),
@@ -173,6 +198,7 @@ pub async fn query_usage(
             usage_script.access_token.clone(),
             usage_script.user_id.clone(),
             usage_script.template_type.clone(),
+            ssy_jwt,
         )
     };
 
@@ -184,6 +210,7 @@ pub async fn query_usage(
         access_token.as_deref(),
         user_id.as_deref(),
         template_type.as_deref(),
+        ssy_jwt.as_deref(),
     )
     .await
 }
@@ -214,6 +241,7 @@ pub async fn test_usage_script(
     // Resolve like the real query so testing matches what a saved script does:
     // explicit values win, empty ones fall back to the provider config.
     let (api_key, base_url) = resolve_script_credentials(&app_type, provider, api_key, base_url);
+    let ssy_jwt = shengsuanyun_jwt_for(state, provider);
 
     execute_and_format_usage_result(
         script_code,
@@ -223,6 +251,7 @@ pub async fn test_usage_script(
         access_token,
         user_id,
         template_type,
+        ssy_jwt.as_deref(),
     )
     .await
 }

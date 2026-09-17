@@ -76,7 +76,10 @@ pub(crate) const SHENG_SUANYUN_SEEDS: &[OfficialProviderSeed] = &[
         website_url: "https://www.shengsuanyun.com",
         icon: "shengsuanyun",
         icon_color: "#16A34A",
-        settings_config_json: r#"{"auth":{"OPENAI_API_KEY":""},"config":"model_provider = \"custom\"\nmodel = \"openai/gpt-5.6-sol\"\n\n[model_providers.custom]\nname = \"shengsuanyun\"\nbase_url = \"https://router.shengsuanyun.com/api/v1\"\nwire_api = \"responses\""}"#,
+        // SSY-Switch: Grok CLI 用原生 `[models]` + `[model."<profile>"].api_key`，
+        // 不是 Codex 的 `auth.OPENAI_API_KEY` + `[model_providers.custom]`。
+        // 模板与 Key 读写统一在 `shengsuanyun::grok_build`，这里只引用它的常量。
+        settings_config_json: crate::shengsuanyun::grok_build::EMPTY_SETTINGS_JSON,
     },
     OfficialProviderSeed {
         id: "shengsuanyun",
@@ -202,5 +205,35 @@ mod tests {
         assert!(is_official_seed_id(GROKBUILD_OFFICIAL_PROVIDER_ID));
         // 空 config = 官方登录态：切换时不注入自定义模型表
         assert_eq!(seed.settings_config_json, r#"{"config":""}"#);
+    }
+
+    /// SSY-Switch: 胜算云的 Grok 卡片必须是 Grok CLI 原生 `[models]` 结构。
+    ///
+    /// 早期版本沿用了 Codex 形态（`auth.OPENAI_API_KEY` + `[model_providers.custom]`），
+    /// 导致一键绑定必然报「Grok Build 配置缺少 [models]」，Key 也写到了 Grok CLI
+    /// 不读的位置。这里锁定种子卡片与 `shengsuanyun::grok_build` 的模板一致。
+    #[test]
+    fn shengsuanyun_grokbuild_seed_is_native_grok() {
+        use crate::shengsuanyun::grok_build;
+
+        let seed = SHENG_SUANYUN_SEEDS
+            .iter()
+            .find(|seed| seed.app_type == AppType::GrokBuild)
+            .expect("shengsuanyun grokbuild seed");
+
+        assert!(!seed.settings_config_json.contains("model_providers"));
+        assert!(!seed.settings_config_json.contains("OPENAI_API_KEY"));
+        assert_eq!(seed.settings_config_json, grok_build::EMPTY_SETTINGS_JSON);
+
+        let settings: serde_json::Value =
+            serde_json::from_str(seed.settings_config_json).expect("valid json");
+        let toml = settings
+            .get("config")
+            .and_then(serde_json::Value::as_str)
+            .expect("config");
+        assert!(toml.contains("[models]"));
+        assert!(toml.contains(&format!("[model.\"{}\"]", grok_build::DEFAULT_PROFILE)));
+        assert!(toml.contains(grok_build::SSY_BASE_URL));
+        assert_eq!(grok_build::read_api_key(&settings), "");
     }
 }

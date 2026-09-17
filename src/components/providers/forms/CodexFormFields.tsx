@@ -757,6 +757,9 @@ export function CodexFormFields({
         <ApiKeySection
           id="codexApiKey"
           label="API Key"
+          appType={appId}
+          providerId={providerId}
+          baseUrl={codexBaseUrl}
           value={codexApiKey}
           onChange={onApiKeyChange}
           category={category}

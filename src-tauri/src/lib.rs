@@ -1208,6 +1208,10 @@ pub fn run() {
                     let Some(app_state) = handle.try_state::<crate::store::AppState>() else {
                         return;
                     };
+                    // 注意：这里**不能**清理「uid 为空」的账号。
+                    // 旧版本把上游数字型 data.ID 解析成空串，登录产生的账号 uid 恒为空，
+                    // 它们带真实凭据与绑定；清理会删掉用户数据（2026-09-16 事故）。
+                    // 正确做法是回填 uid，见 ShengsuanyunState 注册后的 backfill 调用。
                     let Ok(accounts) = app_state.db.list_shengsuanyun_accounts() else {
                         return;
                     };
@@ -1266,6 +1270,26 @@ pub fn run() {
                     let mgr = Arc::new(ShengsuanyunAuthManager::new(app.state::<AppState>().db.clone()));
                     mgr.set_app_handle(app.handle().clone());
                     app.manage(ShengsuanyunState::new(mgr));
+
+                    // SSY-Switch 数据补偿：旧版本登录产生的账号 uid 恒为空（上游 data.ID
+                    // 是数字，被 as_str 解析成空串）。用已存凭据重查 /user/info 回填 uid，
+                    // 让「同 uid 幂等」重新生效；失败只记日志，绝不删除账号。
+                    // 必须放在 ShengsuanyunState 注册之后。
+                    {
+                        let handle = app.handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            use tauri::Manager;
+                            let Some(state) = handle.try_state::<ShengsuanyunState>() else {
+                                return;
+                            };
+                            let manager = state.manager.clone();
+                            match manager.backfill_empty_uid_accounts().await {
+                                Ok(0) => {}
+                                Ok(n) => log::info!("SSY-Switch: 已回填 {n} 个历史账号的 uid"),
+                                Err(e) => log::error!("SSY-Switch: 历史账号 uid 回填失败: {e}"),
+                            }
+                        });
+                    }
                 }
                 log::info!("✓ CodexOAuthManager initialized");
             }
@@ -1522,6 +1546,10 @@ pub fn run() {
             commands::shengsuanyun_get_status,
             commands::shengsuanyun_refresh_balance,
             commands::shengsuanyun_logout,
+            commands::shengsuanyun_list_keys,
+            commands::shengsuanyun_reveal_key,
+            commands::shengsuanyun_get_binding,
+            commands::shengsuanyun_set_binding_key,
             commands::get_settings,
             commands::save_settings,
             commands::has_codex_unify_history_backup,

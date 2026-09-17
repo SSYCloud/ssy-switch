@@ -26,6 +26,36 @@ export interface ShengsuanyunBindResult {
   accountId: string | null;
 }
 
+/** 上游 `/token/list` 的脱敏视图（只有掩码，没有明文） */
+export interface SsyToken {
+  id: number;
+  name: string;
+  tokenMasked: string;
+  desc: string;
+  isDefault: boolean;
+  isBanned: boolean;
+  isExpired: boolean;
+  /** 可选：被禁用或已过期的 Key 不可绑定 */
+  selectable: boolean;
+  /** 额度上限（元）；null 表示无上限 */
+  maxQuotaYuan: number | null;
+  consumedYuan: number;
+  createdAt: number;
+  expiresAt: number;
+  supportedModels: string[];
+}
+
+/** app/provider ↔ 胜算云账号的绑定（含用户选中的 Key ID） */
+export interface ShengsuanyunBinding {
+  appType: string;
+  providerId: string;
+  accountId: string;
+  credentialSource: string;
+  /** 用户显式选中的 Token ID；null 表示使用账号默认 Key */
+  keyId: number | null;
+  updatedAt: number;
+}
+
 export function startShengsuanyunLogin(
   targetApp?: string | null,
   targetProviderId?: string | null,
@@ -79,6 +109,41 @@ export function bindShengsuanyunAccount(
   });
 }
 
+/** 列出某账号名下全部 API Key（脱敏） */
+export function listShengsuanyunKeys(accountId: string): Promise<SsyToken[]> {
+  return invoke("shengsuanyun_list_keys", { accountId });
+}
+
+/** 按需取单把 Key 的明文（用户点选某个 Key 时才调用） */
+export function revealShengsuanyunKey(
+  accountId: string,
+  keyId: number,
+): Promise<string> {
+  return invoke("shengsuanyun_reveal_key", { accountId, keyId });
+}
+
+export function getShengsuanyunBinding(
+  appType: string,
+  providerId: string,
+): Promise<ShengsuanyunBinding | null> {
+  return invoke("shengsuanyun_get_binding", { appType, providerId });
+}
+
+/** 记录该供应商使用哪一把 Key（仅元数据，不落明文） */
+export function setShengsuanyunBindingKey(
+  appType: string,
+  providerId: string,
+  accountId: string,
+  keyId: number | null,
+): Promise<boolean> {
+  return invoke("shengsuanyun_set_binding_key", {
+    appType,
+    providerId,
+    accountId,
+    keyId,
+  });
+}
+
 export const shengsuanyunApi = {
   startLogin: startShengsuanyunLogin,
   cancelLogin: cancelShengsuanyunLogin,
@@ -88,4 +153,8 @@ export const shengsuanyunApi = {
   logout: logoutShengsuanyun,
   bindAccount: bindShengsuanyunAccount,
   bindAllApps: bindShengsuanyunAllApps,
+  listKeys: listShengsuanyunKeys,
+  revealKey: revealShengsuanyunKey,
+  getBinding: getShengsuanyunBinding,
+  setBindingKey: setShengsuanyunBindingKey,
 };

@@ -10,6 +10,8 @@ interface ApiKeyInputProps {
   required?: boolean;
   label?: string;
   id?: string;
+  /** 渲染在输入框内部右侧的附加控件（如胜算云 Key 选择器），在眼睛图标左侧 */
+  trailing?: React.ReactNode;
 }
 
 const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
@@ -20,6 +22,7 @@ const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
   required = false,
   label = "API Key",
   id = "apiKey",
+  trailing,
 }) => {
   const { t } = useTranslation();
   const [showKey, setShowKey] = useState(false);
@@ -28,7 +31,11 @@ const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
     setShowKey(!showKey);
   };
 
-  const inputClass = `w-full px-3 py-2 pr-10 border rounded-lg text-sm transition-colors ${
+  const showToggle = !disabled && !!value;
+  // 右侧需要同时容纳「附加控件 + 眼睛图标」时才加大内边距
+  const rightPad = trailing ? (showToggle ? "pr-16" : "pr-10") : "pr-10";
+
+  const inputClass = `w-full px-3 py-2 ${rightPad} border rounded-lg text-sm transition-colors ${
     disabled
       ? "bg-muted border-border-default text-muted-foreground cursor-not-allowed"
       : "border-border-default bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-400/20"
@@ -51,7 +58,14 @@ const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
           autoComplete="off"
           className={inputClass}
         />
-        {!disabled && value && (
+        {trailing && (
+          <div
+            className={`absolute inset-y-0 flex items-center ${showToggle ? "right-9" : "right-1"}`}
+          >
+            {trailing}
+          </div>
+        )}
+        {showToggle && (
           <button
             type="button"
             onClick={toggleShowKey}

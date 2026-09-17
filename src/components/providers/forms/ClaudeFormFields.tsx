@@ -688,6 +688,9 @@ export function ClaudeFormFields({
       {/* API Key 输入框（非 OAuth 预设时显示） */}
       {shouldShowApiKey && !usesOAuth && (
         <ApiKeySection
+          appType="claude"
+          providerId={providerId}
+          baseUrl={baseUrl}
           value={apiKey}
           onChange={onApiKeyChange}
           category={category}

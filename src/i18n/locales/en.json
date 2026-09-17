@@ -3278,6 +3278,22 @@
     "bannerBody": "No API key copy-paste needed{0}. Log in via browser and we bind & activate automatically.",
     "bannerCta": "Log in with Shengsuanyun",
     "bindConflict": "Some apps have manually configured keys and were not overwritten. Confirm in provider settings before binding.",
-    "bindTo": "Bind & activate"
+    "bindTo": "Bind & activate",
+    "keyPicker": {
+      "trigger": "Choose a Shengsuanyun API key",
+      "switchAccount": "Switch account",
+      "balance": "Balance {{amount}}",
+      "defaultBadge": "Default",
+      "banned": "Disabled",
+      "expired": "Expired",
+      "unlimited": "No limit",
+      "used": "Used {{used}} / {{limit}}",
+      "empty": "No API keys under this account yet",
+      "manage": "Create / manage keys in the Shengsuanyun console",
+      "saveHint": "(saved into the provider config)"
+    },
+    "recharge": "Recharge",
+    "goRecharge": "Recharge now",
+    "insufficientBalance": "Insufficient balance"
   }
 }

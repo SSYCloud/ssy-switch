@@ -134,6 +134,9 @@ export function GeminiFormFields({
       {/* API Key 输入框 */}
       {shouldShowApiKey && !isGoogleOfficial && (
         <ApiKeySection
+          appType="gemini"
+          providerId={providerId}
+          baseUrl={baseUrl}
           value={apiKey}
           onChange={onApiKeyChange}
           category={category}

@@ -158,6 +158,9 @@ interface OpenCodeFormFieldsProps {
   npm: string;
   onNpmChange: (value: string) => void;
 
+  // 编辑已有供应商时的 provider id（胜算云 Key 选择器用于记录绑定）
+  providerId?: string;
+
   // API Key
   apiKey: string;
   onApiKeyChange: (value: string) => void;
@@ -187,6 +190,7 @@ interface OpenCodeFormFieldsProps {
 export function OpenCodeFormFields({
   npm,
   onNpmChange,
+  providerId,
   apiKey,
   onApiKeyChange,
   category,
@@ -525,6 +529,9 @@ export function OpenCodeFormFields({
 
       {/* API Key */}
       <ApiKeySection
+        appType="opencode"
+        providerId={providerId}
+        baseUrl={baseUrl}
         value={apiKey}
         onChange={onApiKeyChange}
         category={category}

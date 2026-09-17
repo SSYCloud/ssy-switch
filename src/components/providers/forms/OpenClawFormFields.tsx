@@ -25,6 +25,9 @@ import { openclawApiProtocols } from "@/config/openclawProviderPresets";
 import type { ProviderCategory, OpenClawModel } from "@/types";
 
 interface OpenClawFormFieldsProps {
+  // 编辑已有供应商时的 provider id（胜算云 Key 选择器用于记录绑定）
+  providerId?: string;
+
   // Base URL
   baseUrl: string;
   onBaseUrlChange: (value: string) => void;
@@ -52,6 +55,7 @@ interface OpenClawFormFieldsProps {
 }
 
 export function OpenClawFormFields({
+  providerId,
   baseUrl,
   onBaseUrlChange,
   apiKey,
@@ -244,6 +248,9 @@ export function OpenClawFormFields({
 
       {/* API Key */}
       <ApiKeySection
+        appType="openclaw"
+        providerId={providerId}
+        baseUrl={baseUrl}
         value={apiKey}
         onChange={onApiKeyChange}
         // OpenClaw 的 API key 始终由用户自填，没有 OAuth-only 的免 key 官方供应商，

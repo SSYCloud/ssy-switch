@@ -556,6 +556,16 @@ impl Database {
                         Self::migrate_v18_to_v19(conn)?;
                         Self::set_user_version(conn, 19)?;
                     }
+                    19 => {
+                        log::info!("迁移数据库从 v19 到 v20（绑定记录记忆选中的胜算云 Key ID）");
+                        Self::migrate_v19_to_v20(conn)?;
+                        Self::set_user_version(conn, 20)?;
+                    }
+                    20 => {
+                        log::info!("迁移数据库从 v20 到 v21（胜算云 uid 唯一约束改为仅非空唯一）");
+                        Self::migrate_v20_to_v21(conn)?;
+                        Self::set_user_version(conn, 21)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -1596,7 +1606,7 @@ impl Database {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS shengsuanyun_accounts (
                 id TEXT PRIMARY KEY,
-                uid TEXT NOT NULL UNIQUE,
+                uid TEXT NOT NULL,
                 display_name TEXT NOT NULL DEFAULT '',
                 email TEXT NOT NULL DEFAULT '',
                 avatar_url TEXT NOT NULL DEFAULT '',
@@ -1608,6 +1618,7 @@ impl Database {
             )",
             [],
         )?;
+        Self::ensure_shengsuanyun_account_uid_index(conn)?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS shengsuanyun_credentials (
                 account_id TEXT PRIMARY KEY,
@@ -1624,12 +1635,83 @@ impl Database {
                 provider_id TEXT NOT NULL,
                 account_id TEXT NOT NULL,
                 credential_source TEXT NOT NULL,
+                key_id INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY (app_type, provider_id)
             )",
             [],
         )?;
+        Ok(())
+    }
+
+    /// 非空 uid 唯一（部分唯一索引）。
+    ///
+    /// 允许历史「uid 为空」的多行共存，同时保住「一个上游账号只对应一行」的不变量。
+    fn ensure_shengsuanyun_account_uid_index(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_shengsuanyun_accounts_uid_nonempty
+               ON shengsuanyun_accounts (uid) WHERE uid <> ''",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// v20 -> v21 迁移：去掉 `shengsuanyun_accounts.uid` 上的 `UNIQUE` 约束，
+    /// 换成「仅非空 uid 唯一」的部分唯一索引。
+    ///
+    /// 原因：旧版本把上游**数字型** `data.ID` 解析成空串，登录产生的账号 uid 恒为空。
+    /// 而列级 `UNIQUE` 会让 `INSERT OR REPLACE` 用新空 uid 行顶掉旧空 uid 行，
+    /// 静默删掉真实账号（2026-09-16 数据事故的第二条根因）。
+    /// SQLite 无法 ALTER 掉约束，只能重建表。
+    fn migrate_v20_to_v21(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "shengsuanyun_accounts")? {
+            return Ok(());
+        }
+        conn.execute("DROP TABLE IF EXISTS shengsuanyun_accounts_v21", [])?;
+        conn.execute(
+            "CREATE TABLE shengsuanyun_accounts_v21 (
+                id TEXT PRIMARY KEY,
+                uid TEXT NOT NULL,
+                display_name TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                avatar_url TEXT NOT NULL DEFAULT '',
+                is_creator INTEGER NOT NULL DEFAULT 0,
+                balance_assets INTEGER,
+                balance_updated_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO shengsuanyun_accounts_v21
+               (id, uid, display_name, email, avatar_url, is_creator,
+                balance_assets, balance_updated_at, created_at, updated_at)
+             SELECT id, uid, display_name, email, avatar_url, is_creator,
+                    balance_assets, balance_updated_at, created_at, updated_at
+               FROM shengsuanyun_accounts",
+            [],
+        )?;
+        conn.execute("DROP TABLE shengsuanyun_accounts", [])?;
+        conn.execute(
+            "ALTER TABLE shengsuanyun_accounts_v21 RENAME TO shengsuanyun_accounts",
+            [],
+        )?;
+        Self::ensure_shengsuanyun_account_uid_index(conn)
+    }
+
+    fn migrate_v19_to_v20(conn: &Connection) -> Result<(), AppError> {
+        // SSY-Switch: 绑定记录记住用户显式选中的上游 Token ID
+        // （重登/启动对账时优先复用该 Key，而不是悄悄改回账号默认 Key）。
+        if Self::table_exists(conn, "shengsuanyun_provider_bindings")? {
+            Self::add_column_if_missing(
+                conn,
+                "shengsuanyun_provider_bindings",
+                "key_id",
+                "INTEGER",
+            )?;
+        }
         Ok(())
     }
 
@@ -3614,6 +3696,69 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(codex_values, (1, 9));
+
+        Ok(())
+    }
+
+    /// v20 -> v21：必须去掉 `uid` 的列级 UNIQUE，否则两条空 uid 行会互相 REPLACE，
+    /// 把真实账号（连同凭据与绑定）静默删掉 —— 2026-09-16 数据事故的第二条根因。
+    #[test]
+    fn migrate_v20_to_v21_drops_uid_unique_constraint() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute(
+            "CREATE TABLE shengsuanyun_accounts (
+                id TEXT PRIMARY KEY,
+                uid TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                avatar_url TEXT NOT NULL DEFAULT '',
+                is_creator INTEGER NOT NULL DEFAULT 0,
+                balance_assets INTEGER,
+                balance_updated_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO shengsuanyun_accounts (id, uid, display_name, created_at, updated_at)
+             VALUES ('a1', '62890', '熊叔', 100, 100)",
+            [],
+        )?;
+        Database::set_user_version(&conn, 20)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        // 存量账号原样保留
+        let kept: (String, String) = conn.query_row(
+            "SELECT id, display_name FROM shengsuanyun_accounts",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(kept, ("a1".to_string(), "熊叔".to_string()));
+        // 空 uid 行可以共存（旧约束下第二条会顶掉第一条）
+        for id in ["legacy-a", "legacy-b"] {
+            conn.execute(
+                "INSERT INTO shengsuanyun_accounts (id, uid, created_at, updated_at)
+                 VALUES (?1, '', 200, 200)",
+                [id],
+            )?;
+        }
+        let empty_uid_rows: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM shengsuanyun_accounts WHERE uid = ''",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(empty_uid_rows, 2);
+        // 非空 uid 仍保持唯一
+        assert!(conn
+            .execute(
+                "INSERT INTO shengsuanyun_accounts (id, uid, created_at, updated_at)
+                 VALUES ('dup', '62890', 200, 200)",
+                [],
+            )
+            .is_err());
 
         Ok(())
     }

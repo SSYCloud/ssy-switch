@@ -1,8 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { parse as parseToml } from "smol-toml";
 import { describe, expect, it, vi } from "vitest";
 import { GrokBuildProviderForm } from "@/components/providers/forms/GrokBuildProviderForm";
+import { invalidateSsyAccountsCache } from "@/components/providers/forms/shared/SsyKeyPicker";
+import { stubSsyKeyCommands } from "../msw/syyKeyStubs";
 
 vi.mock("@/components/JsonEditor", () => ({
   default: ({
@@ -298,5 +300,74 @@ context_window = 500000
     expect(
       screen.queryByText(/Codex 不会把 model_max_output_tokens/),
     ).toBeNull();
+  });
+
+  // Grok Build 复用 Codex 的字段布局，但宿主标识与落盘位置都必须是 Grok 自己的：
+  // 选择器按 appType=grokbuild 记录绑定，选中的 Key 写进
+  // [model."<profile>"].api_key，而不是 Codex 的 auth.OPENAI_API_KEY。
+  it("胜算云供应商在 API Key 栏提供 Key 选择器，选中的 Key 写进模型表的 api_key", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const { setBindingCalls, revealCalls } = stubSsyKeyCommands();
+    invalidateSsyAccountsCache();
+
+    render(
+      <GrokBuildProviderForm
+        providerId="ssy-grok"
+        submitLabel="Save"
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+        initialData={{
+          name: "Shengsuanyun",
+          category: "aggregator",
+          settingsConfig: {
+            config: `[models]
+default = "grok-4.5"
+
+[model."grok-4.5"]
+model = "x-ai/grok-4.5"
+base_url = "https://router.shengsuanyun.com/api/v1"
+name = "Shengsuanyun"
+api_key = ""
+api_backend = "responses"
+context_window = 500000
+`,
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "选择胜算云 API Key" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Bear Xiong/ }));
+
+    await waitFor(() => {
+      expect(setBindingCalls).toEqual([
+        {
+          appType: "grokbuild",
+          providerId: "ssy-grok",
+          accountId: "acct-1",
+          keyId: 83949,
+        },
+      ]);
+    });
+    expect(revealCalls).toEqual([{ accountId: "acct-1", keyId: 83949 }]);
+    expect(
+      (screen.getByLabelText("API Key") as HTMLInputElement).value,
+    ).toBe("sk-bear-plaintext");
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const settings = JSON.parse(onSubmit.mock.calls[0][0].settingsConfig);
+    const config = parseToml(settings.config) as any;
+    const selected = config.model[config.models.default];
+    expect(selected.api_key).toBe("sk-bear-plaintext");
+    expect(selected.base_url).toBe("https://router.shengsuanyun.com/api/v1");
+    expect(selected.model).toBe("x-ai/grok-4.5");
+    expect(selected.api_backend).toBe("responses");
+    // 不能把 Grok 配置写成 Codex 的 [model_providers.*] 结构
+    expect(settings.config).not.toContain("model_providers");
   });
 });

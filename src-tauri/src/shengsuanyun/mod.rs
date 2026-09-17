@@ -7,6 +7,9 @@ pub mod auth_manager;
 pub mod callback_server;
 pub mod client;
 pub mod credential_store;
+// SSY-Switch: Grok CLI 是原生 `[models]` 结构，与 Codex 的 `[model_providers]` 不同，
+// 单独一个模块承载它的模板与 Key 读写（唯一转换入口）。
+pub mod grok_build;
 pub mod models;
 
 pub use auth_manager::ShengsuanyunAuthManager;

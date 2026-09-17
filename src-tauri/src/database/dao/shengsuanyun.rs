@@ -19,12 +19,16 @@ impl Database {
         now: i64,
     ) -> Result<ShengsuanyunAccountRow, String> {
         let conn = lock_conn!(self.conn);
-        // 同 uid 旧记录直接删除（Keychain 侧由调用方保证）
-        conn.execute(
-            "DELETE FROM shengsuanyun_accounts WHERE uid = ?1 AND id != ?2",
-            params![info.uid, id],
-        )
-        .map_err(|e| e.to_string())?;
+        // 同 uid 旧记录直接删除（凭据侧由调用方保证）。
+        // uid 为空时必须跳过：`uid = ''` 会匹配到**所有**历史空 uid 行，
+        // 把别人的账号连同绑定一起删掉（2026-09-16 线上事故根因之一）。
+        if !info.uid.is_empty() {
+            conn.execute(
+                "DELETE FROM shengsuanyun_accounts WHERE uid = ?1 AND id != ?2",
+                params![info.uid, id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
         conn.execute(
             "INSERT OR REPLACE INTO shengsuanyun_accounts
              (id, uid, display_name, email, avatar_url, is_creator, balance_assets, balance_updated_at, created_at, updated_at)
@@ -54,6 +58,73 @@ impl Database {
             created_at: now,
             updated_at: now,
         })
+    }
+
+    /// 按胜算云 uid 反查本地账号 id。
+    ///
+    /// 重登时复用它，避免「删旧行 + 新 id」把绑定记录级联删掉
+    /// （绑定被删会导致用户选中的 Key 丢失）。
+    pub fn find_shengsuanyun_account_id_by_uid(&self, uid: &str) -> Result<Option<String>, String> {
+        if uid.is_empty() {
+            return Ok(None);
+        }
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT id FROM shengsuanyun_accounts WHERE uid = ?1 LIMIT 1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map(params![uid], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        match rows.next() {
+            Some(Ok(id)) => Ok(Some(id)),
+            Some(Err(e)) => Err(e.to_string()),
+            None => Ok(None),
+        }
+    }
+
+    /// 回填账号身份字段（uid / 昵称 / 邮箱 / 头像）。
+    ///
+    /// 用途：旧版本 `data.ID`（数字）被 `as_str` 静默解析成空串，登录产生的账号
+    /// uid 恒为空。这类账号**是真实用户数据**（带凭据与绑定），不能删——
+    /// 启动时用已存凭据重新查一次 `/user/info` 把 uid 补回来。
+    pub fn update_shengsuanyun_account_identity(
+        &self,
+        id: &str,
+        info: &SsyUserInfo,
+        now: i64,
+    ) -> Result<(), String> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "UPDATE shengsuanyun_accounts
+                SET uid = ?2, display_name = ?3, email = ?4, avatar_url = ?5, updated_at = ?6
+              WHERE id = ?1",
+            params![
+                id,
+                info.uid,
+                info.display_name,
+                info.email,
+                info.avatar_url,
+                now
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// 列出所有 uid 为空的账号 id。
+    ///
+    /// 这些是旧版本 `data.ID` 解析失败（数字被当成字符串）留下的真实账号，
+    /// 供启动时用已存凭据回填 uid，**不可删除**。
+    pub fn list_empty_uid_shengsuanyun_account_ids(&self) -> Result<Vec<String>, String> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT id FROM shengsuanyun_accounts WHERE uid = '' OR uid IS NULL")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn list_shengsuanyun_accounts(&self) -> Result<Vec<ShengsuanyunAccountRow>, String> {
@@ -154,52 +225,113 @@ impl Database {
     }
 
     /// 写入/更新绑定（app_type + provider_id 唯一）。
+    ///
+    /// `key_id` 为 None 表示「不改变已记录的选中 Key」（例如 OAuth 重登时只更新
+    /// 账号归属）；显式传入（含选回默认 Key）则覆盖。
     pub fn upsert_shengsuanyun_binding(
         &self,
         app_type: &str,
         provider_id: &str,
         account_id: &str,
         credential_source: &str,
+        key_id: Option<i64>,
         now: i64,
     ) -> Result<(), String> {
         let conn = lock_conn!(self.conn);
         conn.execute(
             "INSERT INTO shengsuanyun_provider_bindings
-             (app_type, provider_id, account_id, credential_source, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+             (app_type, provider_id, account_id, credential_source, key_id, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
              ON CONFLICT(app_type, provider_id) DO UPDATE SET
                account_id = excluded.account_id,
                credential_source = excluded.credential_source,
+               key_id = COALESCE(excluded.key_id, shengsuanyun_provider_bindings.key_id),
                updated_at = excluded.updated_at",
-            params![app_type, provider_id, account_id, credential_source, now],
+            params![
+                app_type,
+                provider_id,
+                account_id,
+                credential_source,
+                key_id,
+                now
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// 只更新已存在绑定的选中 Key（不存在则不创建，返回 false）。
+    pub fn set_shengsuanyun_binding_key(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+        account_id: &str,
+        key_id: Option<i64>,
+        now: i64,
+    ) -> Result<bool, String> {
+        let conn = lock_conn!(self.conn);
+        let changed = conn
+            .execute(
+                "UPDATE shengsuanyun_provider_bindings
+                 SET account_id = ?3, key_id = ?4, updated_at = ?5
+                 WHERE app_type = ?1 AND provider_id = ?2",
+                params![app_type, provider_id, account_id, key_id, now],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed > 0)
+    }
+
+    pub fn get_shengsuanyun_binding(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+    ) -> Result<Option<ShengsuanyunBindingRow>, String> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare(
+                "SELECT app_type, provider_id, account_id, credential_source, key_id,
+                        created_at, updated_at
+                 FROM shengsuanyun_provider_bindings
+                 WHERE app_type = ?1 AND provider_id = ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map(params![app_type, provider_id], map_binding_row)
+            .map_err(|e| e.to_string())?;
+        match rows.next() {
+            Some(Ok(row)) => Ok(Some(row)),
+            Some(Err(e)) => Err(e.to_string()),
+            None => Ok(None),
+        }
     }
 
     pub fn list_shengsuanyun_bindings(&self) -> Result<Vec<ShengsuanyunBindingRow>, String> {
         let conn = lock_conn!(self.conn);
         let mut stmt = conn
             .prepare(
-                "SELECT app_type, provider_id, account_id, credential_source, created_at, updated_at
+                "SELECT app_type, provider_id, account_id, credential_source, key_id,
+                        created_at, updated_at
                  FROM shengsuanyun_provider_bindings",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |row| {
-                Ok(ShengsuanyunBindingRow {
-                    app_type: row.get(0)?,
-                    provider_id: row.get(1)?,
-                    account_id: row.get(2)?,
-                    credential_source: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
-                })
-            })
+            .query_map([], map_binding_row)
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())
     }
+}
+
+fn map_binding_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShengsuanyunBindingRow> {
+    Ok(ShengsuanyunBindingRow {
+        app_type: row.get(0)?,
+        provider_id: row.get(1)?,
+        account_id: row.get(2)?,
+        credential_source: row.get(3)?,
+        key_id: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
 }
 
 #[cfg(test)]
@@ -237,7 +369,7 @@ mod tests {
         let db = Database::memory().unwrap();
         db.upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, None, 100)
             .unwrap();
-        db.upsert_shengsuanyun_binding("claude", "p1", "id-1", "oauth", 100)
+        db.upsert_shengsuanyun_binding("claude", "p1", "id-1", "oauth", None, 100)
             .unwrap();
         db.delete_shengsuanyun_account("id-1").unwrap();
         assert!(db.list_shengsuanyun_accounts().unwrap().is_empty());
@@ -247,11 +379,11 @@ mod tests {
     #[test]
     fn binding_upsert_conflicts_on_app_and_provider() {
         let db = Database::memory().unwrap();
-        db.upsert_shengsuanyun_binding("claude", "p1", "a1", "oauth", 100)
+        db.upsert_shengsuanyun_binding("claude", "p1", "a1", "oauth", None, 100)
             .unwrap();
-        db.upsert_shengsuanyun_binding("claude", "p1", "a2", "oauth", 200)
+        db.upsert_shengsuanyun_binding("claude", "p1", "a2", "oauth", None, 200)
             .unwrap();
-        db.upsert_shengsuanyun_binding("codex", "p1", "a1", "oauth", 200)
+        db.upsert_shengsuanyun_binding("codex", "p1", "a1", "oauth", None, 200)
             .unwrap();
         let bindings = db.list_shengsuanyun_bindings().unwrap();
         assert_eq!(bindings.len(), 2);
@@ -269,6 +401,129 @@ mod tests {
             .unwrap();
         let row = db.get_shengsuanyun_account("id-1").unwrap().unwrap();
         assert_eq!(row.balance_assets, Some(50000.0));
+    }
+
+    #[test]
+    fn binding_remembers_selected_key() {
+        let db = Database::memory().unwrap();
+        db.upsert_shengsuanyun_binding("claude", "p1", "a1", "oauth", None, 100)
+            .unwrap();
+        // 用户显式选中 Bear Xiong
+        assert!(db
+            .set_shengsuanyun_binding_key("claude", "p1", "a1", Some(83949), 200)
+            .unwrap());
+        let b = db
+            .get_shengsuanyun_binding("claude", "p1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(b.key_id, Some(83949));
+        assert_eq!(b.updated_at, 200);
+
+        // OAuth 重登（key_id = None）不应清掉用户的选择
+        db.upsert_shengsuanyun_binding("claude", "p1", "a1", "oauth", None, 300)
+            .unwrap();
+        assert_eq!(
+            db.get_shengsuanyun_binding("claude", "p1")
+                .unwrap()
+                .unwrap()
+                .key_id,
+            Some(83949)
+        );
+
+        // 未绑定的 provider 不会凭空创建记录
+        assert!(!db
+            .set_shengsuanyun_binding_key("claude", "p9", "a1", Some(1), 400)
+            .unwrap());
+        assert!(db
+            .get_shengsuanyun_binding("claude", "p9")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn account_id_is_stable_across_relogin() {
+        let db = Database::memory().unwrap();
+        let first = db
+            .upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, None, 100)
+            .unwrap();
+        assert_eq!(first.id, "id-1");
+        // 重登前先反查复用同一 id
+        let reused = db.find_shengsuanyun_account_id_by_uid("u1").unwrap();
+        assert_eq!(reused.as_deref(), Some("id-1"));
+        db.upsert_shengsuanyun_binding("claude", "p1", "id-1", "oauth", Some(83949), 100)
+            .unwrap();
+        db.save_shengsuanyun_credentials("id-1", "sk-1", "jwt-1")
+            .unwrap();
+
+        let id = reused.unwrap_or_else(|| "id-2".to_string());
+        assert_eq!(id, "id-1");
+        db.upsert_shengsuanyun_account(&id, &info("u1", "Alice2"), false, None, 200)
+            .unwrap();
+        assert_eq!(db.list_shengsuanyun_accounts().unwrap().len(), 1);
+        // 绑定与凭据都不应被级联删除
+        assert_eq!(
+            db.get_shengsuanyun_binding("claude", "p1")
+                .unwrap()
+                .unwrap()
+                .key_id,
+            Some(83949)
+        );
+        assert_eq!(db.load_shengsuanyun_credentials("id-1").unwrap().0, "sk-1");
+    }
+
+    /// 旧版本留下的空 uid 账号是**真实用户数据**：只能回填，不能删。
+    /// （2026-09-16 事故：启动清理把用户账号连同 8 个宿主绑定一起删了）
+    #[test]
+    fn legacy_empty_uid_account_is_backfilled_not_deleted() {
+        let db = Database::memory().unwrap();
+        db.upsert_shengsuanyun_account("legacy", &info("", "user_jheayl"), false, None, 100)
+            .unwrap();
+        db.upsert_shengsuanyun_binding("claude", "p1", "legacy", "oauth", None, 100)
+            .unwrap();
+        db.save_shengsuanyun_credentials("legacy", "sk-old", "jwt-old")
+            .unwrap();
+
+        // 用已存凭据重新查 /user/info 后回填 uid
+        db.update_shengsuanyun_account_identity("legacy", &info("62890", "熊叔"), 200)
+            .unwrap();
+
+        let accounts = db.list_shengsuanyun_accounts().unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].uid, "62890");
+        assert_eq!(accounts[0].display_name, "熊叔");
+        // 凭据与绑定必须原样保留
+        let (api_key, jwt) = db.load_shengsuanyun_credentials("legacy").unwrap();
+        assert_eq!(api_key, "sk-old");
+        assert_eq!(jwt, "jwt-old");
+        assert!(db
+            .get_shengsuanyun_binding("claude", "p1")
+            .unwrap()
+            .is_some());
+    }
+
+    /// uid 为空时的 upsert 不能级联删除其它空 uid 行。
+    #[test]
+    fn empty_uid_upsert_does_not_wipe_other_accounts() {
+        let db = Database::memory().unwrap();
+        db.upsert_shengsuanyun_account("legacy-a", &info("", "A"), false, None, 100)
+            .unwrap();
+        db.upsert_shengsuanyun_account("legacy-b", &info("", "B"), false, None, 100)
+            .unwrap();
+        assert_eq!(db.list_shengsuanyun_accounts().unwrap().len(), 2);
+    }
+
+    /// 启动回填只挑 uid 为空的账号，正常账号不受影响。
+    #[test]
+    fn list_empty_uid_ids_returns_only_legacy_rows() {
+        let db = Database::memory().unwrap();
+        db.upsert_shengsuanyun_account("legacy", &info("", "Legacy"), false, None, 100)
+            .unwrap();
+        db.upsert_shengsuanyun_account("ok", &info("62890", "熊叔"), false, None, 100)
+            .unwrap();
+        assert_eq!(
+            db.list_empty_uid_shengsuanyun_account_ids().unwrap(),
+            vec!["legacy".to_string()]
+        );
     }
 
     // 让 AppError 在本文件类型上可用（避免未使用导入告警）

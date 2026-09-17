@@ -3,7 +3,9 @@ import type { ComponentProps, PropsWithChildren } from "react";
 import { useForm } from "react-hook-form";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeFormFields } from "@/components/providers/forms/ClaudeFormFields";
+import { invalidateSsyAccountsCache } from "@/components/providers/forms/shared/SsyKeyPicker";
 import { Form } from "@/components/ui/form";
+import { stubSsyKeyCommands } from "../msw/syyKeyStubs";
 
 const copilotApiMock = vi.hoisted(() => ({
   copilotGetModels: vi.fn(),
@@ -194,5 +196,68 @@ describe("ClaudeFormFields", () => {
       "CLAUDE_CODE_SUBAGENT_MODEL",
       "shared-model[1M]",
     );
+  });
+});
+
+describe("ClaudeFormFields · 胜算云 Key 选择器", () => {
+  // 选择器挂载时会读账号列表（模块级缓存），用例之间必须清掉
+  beforeEach(() => {
+    invalidateSsyAccountsCache();
+  });
+
+  const renderProviderForm = (overrides: Partial<ClaudeFormFieldsProps> = {}) =>
+    renderCopilotForm({
+      shouldShowApiKey: true,
+      usesOAuth: false,
+      isCopilotPreset: false,
+      isCopilotAuthenticated: false,
+      selectedGitHubAccountId: null,
+      apiKey: "sk-existing",
+      category: "third_party",
+      providerId: "ssy-claude",
+      ...overrides,
+    });
+
+  it("胜算云预设供应商在 API Key 输入框内显示选择器", async () => {
+    stubSsyKeyCommands();
+
+    renderProviderForm({ partnerPromotionKey: "shengsuanyun" });
+
+    expect(
+      await screen.findByRole("button", { name: "选择胜算云 API Key" }),
+    ).toBeInTheDocument();
+  });
+
+  it("自建但 Base URL 指向胜算云时同样显示选择器", async () => {
+    stubSsyKeyCommands();
+
+    renderProviderForm({ baseUrl: "https://router.shengsuanyun.com" });
+
+    expect(
+      await screen.findByRole("button", { name: "选择胜算云 API Key" }),
+    ).toBeInTheDocument();
+  });
+
+  it("非胜算云供应商不显示选择器", async () => {
+    stubSsyKeyCommands();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    renderProviderForm({
+      partnerPromotionKey: undefined,
+      baseUrl: "https://api.anthropic.com",
+    });
+
+    // 选择器组件根本没挂载：既没有触发器，也不该白发一次账号查询
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "选择胜算云 API Key" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      fetchSpy.mock.calls.some(([url]) =>
+        String(url).includes("shengsuanyun_list_accounts"),
+      ),
+    ).toBe(false);
+    fetchSpy.mockRestore();
   });
 });

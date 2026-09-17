@@ -1418,6 +1418,9 @@ export function PiProviderForm({
             <ApiKeySection
               id="pi-api-key"
               label={t("pi.form.credential")}
+              appType="pi"
+              providerId={providerId}
+              baseUrl={baseUrl}
               value={apiKey}
               onChange={handleApiKeyChange}
               category={category}

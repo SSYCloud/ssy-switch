@@ -28,6 +28,8 @@ import {
 import type { ProviderCategory } from "@/types";
 
 interface HermesFormFieldsProps {
+  // 编辑已有供应商时的 provider id（胜算云 Key 选择器用于记录绑定）
+  providerId?: string;
   baseUrl: string;
   onBaseUrlChange: (value: string) => void;
   apiKey: string;
@@ -77,6 +79,7 @@ function validateBaseUrl(raw: string): BaseUrlErrorCode | null {
 }
 
 export function HermesFormFields({
+  providerId,
   baseUrl,
   onBaseUrlChange,
   apiKey,
@@ -242,6 +245,9 @@ export function HermesFormFields({
       </div>
 
       <ApiKeySection
+        appType="hermes"
+        providerId={providerId}
+        baseUrl={baseUrl}
         value={apiKey}
         onChange={onApiKeyChange}
         // Hermes 没有 OAuth-only 的免 key 官方供应商：即便是 official 预设

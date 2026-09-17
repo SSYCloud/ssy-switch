@@ -5,15 +5,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Loader2, LogIn, LogOut, RefreshCw } from "lucide-react";
+import { Loader2, LogIn, LogOut, RefreshCw, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   shengsuanyunApi,
   type ShengsuanyunAccount,
 } from "@/lib/api/shengsuanyun";
+import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
 import { settingsApi } from "@/lib/api/settings";
 
 type Phase = "idle" | "pending" | "error";
+
+/// 胜算云充值页（P0 外跳方案；URL 不携带任何凭据，仅归因参数）
+const SSY_RECHARGE_URL = "https://console.shengsuanyun.com/user/recharge?from=ssy_switch";
+
+/// 402 / 余额不足错误特征（用于"前往充值"引导）
+function isInsufficientBalance(error: unknown): boolean {
+  return /402|insufficient|余额不足/i.test(String(error));
+}
 
 interface OAuthIntent {
   provider: string;
@@ -37,7 +46,28 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
   const bindAppRef = useRef<string | null>(targetApp ?? null);
 
+  const rechargeOpenedAtRef = useRef<number>(0);
+  const lastBalanceRefreshRef = useRef<number>(0);
+
+  // 应用重新聚焦时自动刷新余额（充值回来即看到账）：
+  // 仅在曾打开过充值页、且距上次刷新 > 20s 时触发，避免高频请求
+  useEffect(() => {
+    const onFocus = () => {
+      if (rechargeOpenedAtRef.current === 0) return;
+      if (Date.now() - lastBalanceRefreshRef.current < 20_000) return;
+      const account = accountsRef.current[0];
+      if (!account) return;
+      lastBalanceRefreshRef.current = Date.now();
+      void refreshBalanceSilent(account.id);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const reload = useCallback(async () => {
+    // 账号集合发生变化（登录/登出）：让供应商表单里的 Key 选择器重新读取
+    invalidateSsyAccountsCache();
     try {
       setAccounts(await shengsuanyunApi.listAccounts());
     } catch (e) {
@@ -45,6 +75,20 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       console.warn("list shengsuanyun accounts failed", e);
     }
   }, []);
+
+  const accountsRef = useRef<ShengsuanyunAccount[]>([]);
+  useEffect(() => {
+    accountsRef.current = accounts;
+  }, [accounts]);
+
+  const refreshBalanceSilent = useCallback(async (accountId: string) => {
+    try {
+      await shengsuanyunApi.refreshBalance(accountId);
+      await reload();
+    } catch {
+      /* 静默：余额刷新失败不打扰用户 */
+    }
+  }, [reload]);
 
   useEffect(() => {
     void reload();
@@ -153,6 +197,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
 
   const refreshBalance = async (accountId: string) => {
     setBusy(true);
+    lastBalanceRefreshRef.current = Date.now();
     try {
       await shengsuanyunApi.refreshBalance(accountId);
       await reload();
@@ -172,6 +217,16 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  /// 打开充值页（系统浏览器），记录时间供聚焦后刷新判断
+  const openRecharge = async () => {
+    try {
+      await settingsApi.openExternal(SSY_RECHARGE_URL);
+      rechargeOpenedAtRef.current = Date.now();
+    } catch (e) {
+      setError(String(e));
     }
   };
 
@@ -306,6 +361,16 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
               {t("shengsuanyun.relogin", { defaultValue: "重新登录" })}
             </Button>
             <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-500"
+              disabled={busy}
+              aria-label={t("shengsuanyun.recharge", { defaultValue: "充值" })}
+              onClick={openRecharge}
+            >
+              <Wallet className="mr-1 h-4 w-4" />
+              {t("shengsuanyun.recharge", { defaultValue: "充值" })}
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               disabled={busy}
@@ -339,9 +404,21 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       ))}
 
       {phase === "error" && error && (
-        <p className="text-sm text-destructive" role="alert">
-          {t("shengsuanyun.failed", { defaultValue: "登录失败" })}: {error}
-        </p>
+        <div className="space-y-2" role="alert">
+          <p className="text-sm text-destructive">
+            {isInsufficientBalance(error)
+              ? t("shengsuanyun.insufficientBalance", {
+                  defaultValue: "余额不足，无法完成请求",
+                })
+              : `${t("shengsuanyun.failed", { defaultValue: "登录失败" })}: ${error}`}
+          </p>
+          {isInsufficientBalance(error) && (
+            <Button size="sm" onClick={openRecharge} disabled={busy}>
+              <Wallet className="mr-1 h-4 w-4" />
+              {t("shengsuanyun.goRecharge", { defaultValue: "前往充值" })}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

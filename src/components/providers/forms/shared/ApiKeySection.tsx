@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import ApiKeyInput from "../ApiKeyInput";
+import { SsyKeyPicker } from "./SsyKeyPicker";
 import type { ProviderCategory } from "@/types";
 
 interface ApiKeySectionProps {
@@ -17,6 +18,12 @@ interface ApiKeySectionProps {
   disabled?: boolean;
   isPartner?: boolean;
   partnerPromotionKey?: string;
+  /** 宿主 app（claude / codex / …），用于胜算云 Key 选择器 */
+  appType?: string;
+  /** 编辑已有供应商时的 provider id */
+  providerId?: string;
+  /** 当前 Base URL，用于识别「自建但指向胜算云」的供应商 */
+  baseUrl?: string;
 }
 
 export function ApiKeySection({
@@ -30,6 +37,9 @@ export function ApiKeySection({
   placeholder,
   disabled,
   partnerPromotionKey,
+  appType,
+  providerId,
+  baseUrl,
 }: ApiKeySectionProps) {
   const { t } = useTranslation();
 
@@ -44,6 +54,13 @@ export function ApiKeySection({
 
   const finalPlaceholder = placeholder || defaultPlaceholder;
 
+  // 胜算云 Key 选择器：预设来源 或 自建但指向 router.shengsuanyun.com
+  const isShengsuanyun =
+    !!appType &&
+    (partnerPromotionKey === "shengsuanyun" ||
+      (baseUrl ?? "").includes("shengsuanyun.com"));
+  const apiKeyDisabled = disabled ?? category === "official";
+
   return (
     <div className="space-y-1">
       <ApiKeyInput
@@ -56,7 +73,17 @@ export function ApiKeySection({
             ? finalPlaceholder.official
             : finalPlaceholder.thirdParty
         }
-        disabled={disabled ?? category === "official"}
+        disabled={apiKeyDisabled}
+        trailing={
+          isShengsuanyun && !apiKeyDisabled ? (
+            <SsyKeyPicker
+              appType={appType}
+              providerId={providerId}
+              value={value}
+              onSelect={(apiKey) => onChange(apiKey)}
+            />
+          ) : undefined
+        }
       />
       {/* API Key 获取链接 */}
       {shouldShowLink && websiteUrl && (

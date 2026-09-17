@@ -167,14 +167,27 @@ fn run_bind(
                 }
             };
 
-        if !existing_key.is_empty() && existing_key != api_key && !overwrite {
+        // 用户此前显式选中的 Key 优先：重登 / 启动对账时不能悄悄改回账号默认 Key。
+        let stored_key_id = app_state
+            .db
+            .get_shengsuanyun_binding(at.as_str(), &provider_id)
+            .ok()
+            .flatten()
+            .and_then(|b| b.key_id);
+        let effective_key = match stored_key_id {
+            Some(key_id) => resolve_token_plaintext(app_state, account_id, key_id)
+                .unwrap_or_else(|| api_key.to_string()),
+            None => api_key.to_string(),
+        };
+
+        if !existing_key.is_empty() && existing_key != effective_key && !overwrite {
             return Ok(ShengsuanyunBindResult {
                 status: "conflict".into(),
                 provider_id: Some(provider_id.clone()),
                 account_id: None,
             });
         }
-        write_token(&mut provider, &at, api_key)?;
+        write_token(&mut provider, &at, &effective_key)?;
         crate::services::provider::ProviderService::update(
             app_state,
             at.clone(),
@@ -184,11 +197,13 @@ fn run_bind(
         .map_err(|e| e.to_string())?;
 
         let now = chrono::Utc::now().timestamp();
+        // key_id 传 None = 保留已记录的选中 Key（COALESCE 语义）
         app_state.db.upsert_shengsuanyun_binding(
             at.as_str(),
             &provider_id,
             account_id,
             "oauth",
+            stored_key_id,
             now,
         )?;
 
@@ -203,6 +218,88 @@ fn run_bind(
             account_id: Some(account_id.to_string()),
         })
     }
+}
+
+/// 解析「用户选中的上游 Token」明文。
+///
+/// 仅在绑定记录里存了 key_id 时才会走到这里（一次网络往返）。
+/// 调用方都在 `spawn_blocking` 里，故这里可以安全地 block_on。
+fn resolve_token_plaintext(
+    app_state: &crate::store::AppState,
+    account_id: &str,
+    key_id: i64,
+) -> Option<String> {
+    let creds =
+        crate::shengsuanyun::credential_store::load_credentials(&app_state.db, account_id).ok()?;
+    let client = crate::shengsuanyun::client::SsyClient::new();
+    let tokens = tauri::async_runtime::block_on(client.list_tokens(creds.identity_token())).ok()?;
+    tokens
+        .into_iter()
+        .find(|t| t.id == key_id && !t.token.is_empty())
+        .map(|t| t.token)
+}
+
+fn binding_view(row: ShengsuanyunBindingRow) -> ShengsuanyunBindingView {
+    ShengsuanyunBindingView {
+        app_type: row.app_type,
+        provider_id: row.provider_id,
+        account_id: row.account_id,
+        credential_source: row.credential_source,
+        key_id: row.key_id,
+        updated_at: row.updated_at,
+    }
+}
+
+/// 列出某账号名下的全部 API Key（脱敏视图：只有名称、掩码、用量）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_list_keys(
+    state: State<'_, ShengsuanyunState>,
+    account_id: String,
+) -> Result<Vec<SsyTokenView>, String> {
+    state.manager.list_tokens(&account_id).await
+}
+
+/// 按需取**单把** Key 的明文（用户在下拉里点中某一个时才调用）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_reveal_key(
+    state: State<'_, ShengsuanyunState>,
+    account_id: String,
+    key_id: i64,
+) -> Result<String, String> {
+    state.manager.reveal_token(&account_id, key_id).await
+}
+
+/// 查询目标 app/provider 的绑定详情（含用户选中的 Key ID）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_get_binding(
+    state: State<'_, ShengsuanyunState>,
+    app_type: String,
+    provider_id: String,
+) -> Result<Option<ShengsuanyunBindingView>, String> {
+    let db = state.manager.db_handle();
+    Ok(db
+        .get_shengsuanyun_binding(&app_type, &provider_id)?
+        .map(binding_view))
+}
+
+/// 记录「该供应商使用哪一把 Key」（仅元数据，不落明文）。
+///
+/// 绑定不存在时创建一条，避免启动对账把它当成未绑定再改回默认 Key。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_set_binding_key(
+    state: State<'_, ShengsuanyunState>,
+    app_type: String,
+    provider_id: String,
+    account_id: String,
+    key_id: Option<i64>,
+) -> Result<bool, String> {
+    let db = state.manager.db_handle();
+    let now = chrono::Utc::now().timestamp();
+    if db.set_shengsuanyun_binding_key(&app_type, &provider_id, &account_id, key_id, now)? {
+        return Ok(true);
+    }
+    db.upsert_shengsuanyun_binding(&app_type, &provider_id, &account_id, "key", key_id, now)?;
+    Ok(true)
 }
 
 /// 单 App 绑定命令（前端按钮 / 自动绑定共用）。
@@ -298,23 +395,32 @@ pub const SSY_ALL_APPS: &[&str] = &[
     "pi",
 ];
 
-/// 各宿主 settingsConfig 中胜算云 Key 的 JSON pointer 路径（与前端 preset 一一对应）
-fn token_pointer(at: &crate::app_config::AppType) -> &'static str {
+/// 各宿主 settingsConfig 中胜算云 Key 的 JSON pointer 路径（与前端 preset 一一对应）。
+///
+/// GrokBuild 返回 `None`：它的 Key 落在 TOML 文档的 `[model."<profile>"].api_key` 里，
+/// 没有 JSON pointer，走 `shengsuanyun::grok_build` 的专用读写。
+fn token_pointer(at: &crate::app_config::AppType) -> Option<&'static str> {
     use crate::app_config::AppType;
     match at {
-        AppType::Claude | AppType::ClaudeDesktop => "/env/ANTHROPIC_AUTH_TOKEN",
-        AppType::Codex | AppType::GrokBuild => "/auth/OPENAI_API_KEY",
-        AppType::Gemini => "/env/GEMINI_API_KEY",
-        AppType::OpenCode => "/options/apiKey",
-        AppType::OpenClaw => "/apiKey",
-        AppType::Hermes => "/api_key",
-        AppType::Pi => "/apiKey",
+        AppType::Claude | AppType::ClaudeDesktop => Some("/env/ANTHROPIC_AUTH_TOKEN"),
+        AppType::Codex => Some("/auth/OPENAI_API_KEY"),
+        AppType::GrokBuild => None,
+        AppType::Gemini => Some("/env/GEMINI_API_KEY"),
+        AppType::OpenCode => Some("/options/apiKey"),
+        AppType::OpenClaw => Some("/apiKey"),
+        AppType::Hermes => Some("/api_key"),
+        AppType::Pi => Some("/apiKey"),
     }
 }
 
 fn read_token(p: &crate::provider::Provider, at: &crate::app_config::AppType) -> String {
-    p.settings_config
-        .pointer(token_pointer(at))
+    use crate::app_config::AppType;
+    // Grok CLI 的原生结构：Key 在 config.toml 文本里，没有 JSON pointer。
+    if matches!(at, AppType::GrokBuild) {
+        return crate::shengsuanyun::grok_build::read_api_key(&p.settings_config);
+    }
+    token_pointer(at)
+        .and_then(|pointer| p.settings_config.pointer(pointer))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string()
@@ -325,7 +431,12 @@ fn write_token(
     at: &crate::app_config::AppType,
     api_key: &str,
 ) -> Result<(), String> {
-    let pointer = token_pointer(at);
+    use crate::app_config::AppType;
+    // Grok CLI 的原生结构：写进 `[model."<profile>"].api_key`，保留用户其它内容。
+    if matches!(at, AppType::GrokBuild) {
+        return crate::shengsuanyun::grok_build::write_api_key(&mut p.settings_config, api_key);
+    }
+    let pointer = token_pointer(at).ok_or("该宿主没有 JSON pointer 形式的 Key 字段")?;
     let segments: Vec<&str> = pointer.trim_start_matches('/').split('/').collect();
     let root_obj = p
         .settings_config
@@ -370,10 +481,13 @@ fn new_shengsuanyun_provider(
                 "ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-5"
             }
         }),
-        AppType::Codex | AppType::GrokBuild => serde_json::json!({
+        AppType::Codex => serde_json::json!({
             "auth": { "OPENAI_API_KEY": api_key },
             "config": "model_provider = \"custom\"\nmodel = \"openai/gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.custom]\nname = \"shengsuanyun\"\nbase_url = \"https://router.shengsuanyun.com/api/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true"
         }),
+        // Grok CLI 不是 Codex：用原生 `[models]` + `[model."<profile>"].api_key`
+        // （模板与 Key 写入统一在 shengsuanyun::grok_build，避免两套结构互相污染）。
+        AppType::GrokBuild => crate::shengsuanyun::grok_build::build_settings_config(api_key),
         AppType::Gemini => serde_json::json!({
             "env": {
                 "GOOGLE_GEMINI_BASE_URL": "https://router.shengsuanyun.com/api",

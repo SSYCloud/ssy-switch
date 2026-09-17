@@ -79,6 +79,8 @@ type PresetEntry = {
 
 export interface ClaudeDesktopProviderFormProps {
   submitLabel: string;
+  /** 编辑已有供应商时的 provider id（胜算云 Key 选择器用于记录绑定） */
+  providerId?: string;
   onSubmit: (values: ClaudeDesktopProviderFormValues) => Promise<void> | void;
   onCancel: () => void;
   onSubmittingChange?: (isSubmitting: boolean) => void;
@@ -240,6 +242,7 @@ function defaultRouteRows(
 }
 
 export function ClaudeDesktopProviderForm({
+  providerId,
   submitLabel,
   onSubmit,
   onCancel,
@@ -921,6 +924,9 @@ export function ClaudeDesktopProviderForm({
               </div>
             ) : (
               <ApiKeySection
+                appType="claude-desktop"
+                providerId={providerId}
+                baseUrl={baseUrl}
                 value={apiKey}
                 onChange={setApiKey}
                 category={apiKeyLinkCategory}

@@ -3278,6 +3278,22 @@
     "bannerBody": "无需复制 API Key{0}。浏览器登录胜算云账号后自动绑定并激活。",
     "bannerCta": "用胜算云账号登录",
     "bindConflict": "部分应用已有手动配置的 Key，未自动覆盖。请在供应商设置中确认后再绑定。",
-    "bindTo": "绑定并激活"
+    "bindTo": "绑定并激活",
+    "keyPicker": {
+      "trigger": "选择胜算云 API Key",
+      "switchAccount": "换个账号",
+      "balance": "余额 {{amount}}",
+      "defaultBadge": "默认",
+      "banned": "已禁用",
+      "expired": "已过期",
+      "unlimited": "无上限",
+      "used": "已用 {{used}} / {{limit}}",
+      "empty": "该账号下还没有 API Key",
+      "manage": "在胜算云控制台创建 / 管理 Key",
+      "saveHint": "（保存后写入供应商配置）"
+    },
+    "recharge": "充值",
+    "goRecharge": "前往充值",
+    "insufficientBalance": "余额不足，无法完成请求"
   }
 }

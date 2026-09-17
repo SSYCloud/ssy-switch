@@ -91,6 +91,99 @@ pub struct OAuthFailedPayload {
     pub reason: String,
 }
 
+/// `GET /token/list` 返回的单条 Token（上游原始结构，字段按实际响应解析）。
+///
+/// 注意：`token` 是**完整明文**，只在「用户显式选择某一把 Key」时按需读取，
+/// 不得整表落库、不得写日志、不得一次性灌进前端。
+#[derive(Clone, Debug, Default)]
+pub struct SsyToken {
+    pub id: i64,
+    pub name: String,
+    /// 完整明文 Key
+    pub token: String,
+    pub desc: String,
+    pub is_default: bool,
+    pub is_banned: bool,
+    pub is_expired: bool,
+    /// 额度上限（上游原始单位，0 = 无上限）
+    pub max_quota: f64,
+    /// 已消耗（上游原始单位）
+    pub consumed_amount: f64,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub supported_models: Vec<String>,
+}
+
+impl SsyToken {
+    /// 额度上限（元）；None 表示无上限（上游 `MaxQuota == 0`）
+    pub fn max_quota_yuan(&self) -> Option<f64> {
+        (self.max_quota > 0.0).then(|| assets_to_yuan(self.max_quota))
+    }
+
+    pub fn consumed_yuan(&self) -> f64 {
+        assets_to_yuan(self.consumed_amount)
+    }
+
+    /// 是否可选：被禁用或已过期的 Key 不允许绑定
+    pub fn selectable(&self) -> bool {
+        !self.is_banned && !self.is_expired
+    }
+
+    pub fn view(&self) -> SsyTokenView {
+        SsyTokenView {
+            id: self.id,
+            name: self.name.clone(),
+            token_masked: mask_token(&self.token),
+            desc: self.desc.clone(),
+            is_default: self.is_default,
+            is_banned: self.is_banned,
+            is_expired: self.is_expired,
+            selectable: self.selectable(),
+            max_quota_yuan: self.max_quota_yuan(),
+            consumed_yuan: self.consumed_yuan(),
+            created_at: self.created_at,
+            expires_at: self.expires_at,
+            supported_models: self.supported_models.clone(),
+        }
+    }
+}
+
+/// 暴露给前端的 Token 视图（脱敏：只给掩码，不给明文）
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsyTokenView {
+    pub id: i64,
+    pub name: String,
+    pub token_masked: String,
+    pub desc: String,
+    pub is_default: bool,
+    pub is_banned: bool,
+    pub is_expired: bool,
+    pub selectable: bool,
+    /// 额度上限（元）；None 表示无上限
+    pub max_quota_yuan: Option<f64>,
+    pub consumed_yuan: f64,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub supported_models: Vec<String>,
+}
+
+/// 对 Key 掩码：保留前 6 位与后 4 位
+pub fn mask_token(token: &str) -> String {
+    let chars: Vec<char> = token.chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+    if chars.len() <= 12 {
+        return "*".repeat(chars.len());
+    }
+    format!(
+        "{}……{}",
+        chars[..6].iter().collect::<String>(),
+        chars[chars.len() - 4..].iter().collect::<String>()
+    )
+}
+
 /// 账号与 Provider 的绑定记录
 #[derive(Clone, Debug, Serialize)]
 pub struct ShengsuanyunBindingRow {
@@ -98,7 +191,22 @@ pub struct ShengsuanyunBindingRow {
     pub provider_id: String,
     pub account_id: String,
     pub credential_source: String,
+    /// 用户显式选中的上游 Token ID（`/token/list` 的 ID）。
+    /// None 表示使用账号默认 Key（OAuth 下发的那把）。
+    pub key_id: Option<i64>,
     pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// 暴露给前端的绑定视图（脱敏，无明文 Key）
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShengsuanyunBindingView {
+    pub app_type: String,
+    pub provider_id: String,
+    pub account_id: String,
+    pub credential_source: String,
+    pub key_id: Option<i64>,
     pub updated_at: i64,
 }
 
@@ -148,6 +256,42 @@ mod tests {
     fn mask_email_masks_local_part() {
         assert_eq!(mask_email("alice@example.com"), "al***@example.com");
         assert_eq!(mask_email("not-an-email"), "");
+    }
+
+    #[test]
+    fn mask_token_keeps_edges() {
+        assert_eq!(mask_token("T5U-t_abcdefghijklmnop"), "T5U-t_……mnop");
+        assert_eq!(mask_token("short"), "*****");
+        assert_eq!(mask_token(""), "");
+    }
+
+    #[test]
+    fn max_quota_zero_means_unlimited() {
+        let mut t = SsyToken {
+            token: "k".repeat(90),
+            max_quota: 0.0,
+            ..Default::default()
+        };
+        assert_eq!(t.max_quota_yuan(), None);
+        t.max_quota = 1_000_000.0;
+        assert!((t.max_quota_yuan().unwrap() - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn token_view_is_masked() {
+        let t = SsyToken {
+            id: 83949,
+            name: "Bear Xiong".into(),
+            token: "T5U-t_0123456789abcdefghijklmnopqrstuvwxyz".into(),
+            max_quota: 1_000_000.0,
+            consumed_amount: 0.0,
+            ..Default::default()
+        };
+        let v = t.view();
+        assert_eq!(v.id, 83949);
+        assert!(!v.token_masked.contains("0123456789abcdef"));
+        assert!(v.selectable);
+        assert!(v.token_masked.starts_with("T5U-t_"));
     }
 
     #[test]

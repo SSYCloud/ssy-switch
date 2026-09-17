@@ -2545,6 +2545,7 @@ function ProviderFormFull({
             <OpenCodeFormFields
               npm={opencodeForm.opencodeNpm}
               onNpmChange={opencodeForm.handleOpencodeNpmChange}
+              providerId={providerId}
               apiKey={opencodeForm.opencodeApiKey}
               onApiKeyChange={opencodeForm.handleOpencodeApiKeyChange}
               category={category}
@@ -2588,6 +2589,7 @@ function ProviderFormFull({
           {/* OpenClaw 专属字段 */}
           {appId === "openclaw" && (
             <OpenClawFormFields
+              providerId={providerId}
               baseUrl={openclawForm.openclawBaseUrl}
               onBaseUrlChange={openclawForm.handleOpenclawBaseUrlChange}
               apiKey={openclawForm.openclawApiKey}
@@ -2609,6 +2611,7 @@ function ProviderFormFull({
           {/* Hermes 专属字段 */}
           {appId === "hermes" && (
             <HermesFormFields
+              providerId={providerId}
               baseUrl={hermesForm.hermesBaseUrl}
               onBaseUrlChange={hermesForm.handleHermesBaseUrlChange}
               apiKey={hermesForm.hermesApiKey}

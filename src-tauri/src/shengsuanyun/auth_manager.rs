@@ -148,10 +148,14 @@ impl ShengsuanyunAuthManager {
             .await?;
         let is_creator = self.client.detect_creator_role(&credentials.api_key).await;
 
-        let id = uuid::Uuid::new_v4().to_string();
+        // 以 uid 为幂等键：同一胜算云账号重复登录时**复用同一本地 id**，
+        // 这样绑定记录（含用户选中的 Key）不会被级联删除。
+        let id = self
+            .db
+            .find_shengsuanyun_account_id_by_uid(&info.uid)?
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         creds::save_credentials(&self.db, &id, &stored)?;
         let now = now_ts();
-        // 以 uid 为幂等键：同一胜算云账号重复登录时覆盖旧记录（含旧 Key）
         let row = self.db.upsert_shengsuanyun_account(
             &id,
             &info,
@@ -202,6 +206,49 @@ impl ShengsuanyunAuthManager {
         Ok(assets_to_yuan(info.wallet_assets))
     }
 
+    /// 启动对账：把旧版本遗留的「uid 为空」账号用已存凭据回填 uid。
+    ///
+    /// 旧版本用 `as_str` 解析上游**数字型** `data.ID`，结果恒为空串，于是登录
+    /// 产生的账号 uid 都是空的。这些账号带真实凭据与宿主绑定，**只能回填不能
+    /// 删除**（2026-09-16 数据事故：启动清理把用户账号连同 8 个宿主绑定一起删了）。
+    /// 单个账号失败只记日志，不阻断其余账号。
+    pub async fn backfill_empty_uid_accounts(&self) -> Result<usize, String> {
+        let ids = self.db.list_empty_uid_shengsuanyun_account_ids()?;
+        let mut filled = 0usize;
+        for id in ids {
+            let credentials = match creds::load_credentials(&self.db, &id) {
+                Ok(c) => c,
+                Err(e) => {
+                    log::warn!("SSY-Switch: 账号 {id} 凭据读取失败，跳过 uid 回填: {e}");
+                    continue;
+                }
+            };
+            match self
+                .client
+                .fetch_user_info(credentials.identity_token())
+                .await
+            {
+                Ok(info) if !info.uid.is_empty() => {
+                    match self
+                        .db
+                        .update_shengsuanyun_account_identity(&id, &info, now_ts())
+                    {
+                        Ok(()) => {
+                            filled += 1;
+                            log::info!("SSY-Switch: 已回填账号 {id} 的 uid");
+                        }
+                        Err(e) => log::warn!("SSY-Switch: 账号 {id} uid 回填写库失败: {e}"),
+                    }
+                }
+                Ok(_) => {
+                    log::warn!("SSY-Switch: 账号 {id} 上游仍未返回 uid，保留本地记录不删")
+                }
+                Err(e) => log::warn!("SSY-Switch: 账号 {id} 查询 /user/info 失败: {e}"),
+            }
+        }
+        Ok(filled)
+    }
+
     /// 登出：删除 Keychain 凭据 + DB 账号 + 绑定记录。幂等。
     pub fn logout(&self, account_id: &str) -> Result<(), String> {
         creds::delete_credentials(&self.db, account_id)?;
@@ -212,6 +259,32 @@ impl ShengsuanyunAuthManager {
     /// 读取某账号的 API Key（仅供 Provider 写入 live config 使用，不对外暴露给前端）。
     pub fn api_key_for(&self, account_id: &str) -> Result<String, String> {
         Ok(creds::load_credentials(&self.db, account_id)?.api_key)
+    }
+
+    /// 列出账号名下的全部 Token（脱敏视图，供 Key 选择器展示）。
+    pub async fn list_tokens(&self, account_id: &str) -> Result<Vec<SsyTokenView>, String> {
+        let credentials = creds::load_credentials(&self.db, account_id)?;
+        let tokens = self
+            .client
+            .list_tokens(credentials.identity_token())
+            .await?;
+        Ok(tokens.iter().map(SsyToken::view).collect())
+    }
+
+    /// 按 Token ID 取**单把** Key 明文（用户点击选中时才调用）。
+    ///
+    /// 刻意不做「整表返回明文」的接口：webview 同时最多只持有一把 secret。
+    pub async fn reveal_token(&self, account_id: &str, key_id: i64) -> Result<String, String> {
+        let credentials = creds::load_credentials(&self.db, account_id)?;
+        let tokens = self
+            .client
+            .list_tokens(credentials.identity_token())
+            .await?;
+        tokens
+            .into_iter()
+            .find(|t| t.id == key_id && !t.token.is_empty())
+            .map(|t| t.token)
+            .ok_or_else(|| format!("未找到 ID 为 {key_id} 的 API Key"))
     }
 }
 

@@ -1220,20 +1220,63 @@ pub fn run() {
                         return;
                     };
                     for app_type in commands::SSY_ALL_APPS {
-                        // 按 App 逐个补账：该 App 尚无绑定时才绑定（不重复、不覆盖）
-                        if bindings.iter().any(|b| b.app_type == *app_type) {
+                        let already_bound = bindings.iter().any(|b| b.app_type == *app_type);
+
+                        // 未绑定：自动补齐绑定并激活（不重复、不覆盖）
+                        if !already_bound {
+                            log::info!("SSY-Switch: {app_type} 未绑定胜算云，自动补齐");
+                            match commands::bind_account_internal(
+                                app_state.inner(),
+                                app_type,
+                                &account.id,
+                                true,
+                                false,
+                            ) {
+                                Ok(r) => log::info!("SSY 自动绑定 {app_type}: {}", r.status),
+                                Err(e) => log::error!("SSY 自动绑定 {app_type} 失败: {e}"),
+                            }
                             continue;
                         }
-                        log::info!("SSY-Switch: {app_type} 未绑定胜算云，自动补齐");
-                        match commands::bind_account_internal(
+
+                        // 已绑定但卡片尚无用量脚本（旧版本创建的卡片）：补默认脚本。
+                        // 只在缺失时填充，绝不覆盖用户已保存的配置；走 DAO 层写库，
+                        // 不经 ProviderService::update 以免重复改写 live 配置。
+                        let Ok(at) = <crate::app_config::AppType as std::str::FromStr>::from_str(app_type) else {
+                            continue;
+                        };
+                        let Ok(providers) = crate::services::provider::ProviderService::list(
                             app_state.inner(),
-                            app_type,
-                            &account.id,
-                            true,
-                            false,
-                        ) {
-                            Ok(r) => log::info!("SSY 自动绑定 {app_type}: {}", r.status),
-                            Err(e) => log::error!("SSY 自动绑定 {app_type} 失败: {e}"),
+                            at,
+                        ) else {
+                            continue;
+                        };
+                        let binding = bindings
+                            .iter()
+                            .find(|b| b.app_type == *app_type)
+                            .expect("checked above");
+                        let Some(provider) = providers.get(&binding.provider_id) else {
+                            continue;
+                        };
+                        if crate::shengsuanyun::models::has_usage_script(provider) {
+                            continue;
+                        }
+                        let mut updated = provider.clone();
+                        updated.meta = Some(match updated.meta.take() {
+                            Some(mut m) => {
+                                m.usage_script = Some(
+                                    crate::shengsuanyun::models::default_usage_script_meta()
+                                        .usage_script
+                                        .expect("set"),
+                                );
+                                m
+                            }
+                            None => crate::shengsuanyun::models::default_usage_script_meta(),
+                        });
+                        match app_state.db.save_provider(app_type, &updated) {
+                            Ok(_) => {
+                                log::info!("SSY: 已为 {app_type} 胜算云卡片启用默认用量查询")
+                            }
+                            Err(e) => log::error!("SSY: {app_type} 用量脚本补填失败: {e}"),
                         }
                     }
                 });

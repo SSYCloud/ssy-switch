@@ -237,6 +237,60 @@ pub fn mask_email(email: &str) -> String {
     format!("{masked_user}@{domain}")
 }
 
+/// 胜算云 Provider 出厂默认的用量查询脚本。
+///
+/// - `{{shengsuanyunJwt}}` 在每次查询时由应用注入当前登录凭据（网关 Key 不被 /user/info 接受）
+/// - 仅在 Provider 尚无用量脚本时应用，绝不覆盖用户已保存的配置
+pub fn default_usage_script_meta() -> crate::provider::ProviderMeta {
+    let code = r#"({
+  request: {
+    url: "https://api.shengsuanyun.com/user/info",
+    method: "GET",
+    headers: {
+      "x-token": "{{shengsuanyunJwt}}",
+    },
+  },
+  extractor: function (response) {
+    const data = response.data || response || {};
+    const wallet = data.Wallet || data.wallet || {};
+    const assets = Number(wallet.Assets ?? wallet.assets ?? 0);
+    return {
+      remaining: assets / 10000,
+      unit: "CNY",
+    };
+  },
+})"#;
+    crate::provider::ProviderMeta {
+        usage_script: Some(crate::provider::UsageScript {
+            enabled: true,
+            language: "javascript".to_string(),
+            code: code.to_string(),
+            timeout: Some(10),
+            api_key: None,
+            base_url: None,
+            access_token: None,
+            user_id: None,
+            template_type: None,
+            auto_query_interval: Some(5),
+            coding_plan_provider: None,
+            access_key_id: None,
+            secret_access_key: None,
+            team_organization_id: None,
+            team_project_id: None,
+        }),
+        ..Default::default()
+    }
+}
+
+/// Provider 是否已配置（任意）用量脚本。
+pub fn has_usage_script(provider: &crate::provider::Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|m| m.usage_script.as_ref())
+        .is_some()
+}
+
 /// 上游资产单位 → 元（仅展示层调用，全链路只换算一次）
 pub fn assets_to_yuan(assets: f64) -> f64 {
     assets / 10000.0

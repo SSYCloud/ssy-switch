@@ -542,7 +542,7 @@ fn new_shengsuanyun_provider(
         icon: Some("shengsuanyun".into()),
         icon_color: None,
         in_failover_queue: false,
-        meta: None,
+        meta: Some(crate::shengsuanyun::models::default_usage_script_meta()),
     }
 }
 
@@ -628,6 +628,10 @@ mod tests {
             assert!(cfg.contains("sk-x"), "{app}");
             // 模板自带的 Key 可通过 pointer 读回（写入路径正确性验证）
             assert_eq!(read_token(&p, &at), "sk-x", "{app}");
+            // 出厂自带用量脚本（启用，5 分钟自动查询）
+            let usage = p.meta.expect("meta").usage_script.expect("usage");
+            assert!(usage.enabled, "{app}");
+            assert!(usage.code.contains("{{shengsuanyunJwt}}"), "{app}");
         }
     }
 

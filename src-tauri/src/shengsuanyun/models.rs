@@ -283,6 +283,7 @@ pub fn default_usage_script_meta() -> crate::provider::ProviderMeta {
 }
 
 /// Provider 是否已配置（任意）用量脚本。
+#[allow(dead_code)] // 对账逻辑改用内联判断（需区分模板升级与完整补填），保留作公共 API
 pub fn has_usage_script(provider: &crate::provider::Provider) -> bool {
     provider
         .meta

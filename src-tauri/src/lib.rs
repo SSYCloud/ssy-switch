@@ -1257,17 +1257,36 @@ pub fn run() {
                         let Some(provider) = providers.get(&binding.provider_id) else {
                             continue;
                         };
-                        if crate::shengsuanyun::models::has_usage_script(provider) {
+                        // 两种情况需要补：
+                        // a) 完全没有用量脚本 → 填默认脚本；
+                        // b) 脚本由旧版出厂模板创建（含 {{shengsuanyunJwt}} 标记）但
+                        //    template_type 为空 → 仅升级模板标记（否则同源检查会拦截
+                        //    api. → router. 的跨域请求）。用户自配脚本（无标记或已带
+                        //    任意 template_type）一律不动。
+                        let usage = provider
+                            .meta
+                            .as_ref()
+                            .and_then(|m| m.usage_script.as_ref());
+                        let needs_full_backfill = usage.is_none();
+                        let needs_template_upgrade = usage.is_some_and(|u| {
+                            u.template_type.is_none()
+                                && u.code.contains("{{shengsuanyunJwt}}")
+                        });
+                        if !needs_full_backfill && !needs_template_upgrade {
                             continue;
                         }
                         let mut updated = provider.clone();
                         updated.meta = Some(match updated.meta.take() {
                             Some(mut m) => {
-                                m.usage_script = Some(
-                                    crate::shengsuanyun::models::default_usage_script_meta()
-                                        .usage_script
-                                        .expect("set"),
-                                );
+                                if needs_full_backfill {
+                                    m.usage_script = Some(
+                                        crate::shengsuanyun::models::default_usage_script_meta()
+                                            .usage_script
+                                            .expect("set"),
+                                    );
+                                } else if let Some(u) = m.usage_script.as_mut() {
+                                    u.template_type = Some("shengsuanyun".to_string());
+                                }
                                 m
                             }
                             None => crate::shengsuanyun::models::default_usage_script_meta(),

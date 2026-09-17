@@ -27,7 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { cn } from "@/lib/utils";
-import { TEMPLATE_TYPES, PROVIDER_TYPES } from "@/config/constants";
+import { TEMPLATE_TYPES, PROVIDER_TYPES, type TemplateType } from "@/config/constants";
 import {
   CODING_PLAN_PROVIDERS,
   detectCodingPlanProvider,
@@ -127,6 +127,26 @@ const generatePresetTemplates = (
 
   // 官方订阅额度查询不需要脚本，使用 CLI/OAuth 凭据调用官方 API
   [TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION]: "",
+
+  // 胜算云模板直接复用出厂用量脚本：JWT 由应用注入，展示钱包余额
+  [TEMPLATE_TYPES.SHENGSUANYUN]: `({
+  request: {
+    url: "https://api.shengsuanyun.com/user/info",
+    method: "GET",
+    headers: {
+      "x-token": "{{shengsuanyunJwt}}",
+    },
+  },
+  extractor: function (response) {
+    const data = response.data || response || {};
+    const wallet = data.Wallet || data.wallet || {};
+    const assets = Number(wallet.Assets ?? wallet.assets ?? 0);
+    return {
+      remaining: assets / 10000,
+      unit: "CNY",
+    };
+  },
+})`,
 });
 
 // 模板名称国际化键映射
@@ -139,6 +159,7 @@ const TEMPLATE_NAME_KEYS: Record<string, string> = {
   [TEMPLATE_TYPES.BALANCE]: "usageScript.templateBalance",
   [TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION]:
     "usageScript.templateOfficialSubscription",
+  [TEMPLATE_TYPES.SHENGSUANYUN]: "usageScript.templateShengsuanyun",
 };
 
 /** 官方余额查询供应商检测 */
@@ -196,6 +217,24 @@ function isOfficialSubscriptionProvider(provider: Provider, appId: AppId) {
   // 已解析的 JSON 字段上是精确的，不受此限。官方判定以 category 为 SSOT 的
   // 理由见 ProviderCard 中的注释。
   return false;
+}
+
+/**
+ * 胜算云卡片识别：默认种子 id 固定为 shengsuanyun，OAuth 绑定创建的卡片
+ * 使用 ssy- 前缀；再兜底识别图标和域名，覆盖老配置改名的情况。
+ */
+function isShengsuanyunProvider(provider: Provider, baseUrl?: string) {
+  const id = provider.id.toLowerCase();
+  const icon = provider.icon?.toLowerCase();
+  const websiteUrl = provider.websiteUrl?.toLowerCase() || "";
+  const inferenceUrl = baseUrl?.toLowerCase() || "";
+  return (
+    id === "shengsuanyun" ||
+    id.startsWith("ssy-") ||
+    icon === "shengsuanyun" ||
+    websiteUrl.includes("shengsuanyun.com") ||
+    inferenceUrl.includes("shengsuanyun.com")
+  );
 }
 
 const NATIVE_USAGE_TEMPLATES = new Set<string>([
@@ -328,6 +367,10 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
     provider,
     appId,
   );
+  const isShengsuanyun = isShengsuanyunProvider(
+    provider,
+    providerCredentials.baseUrl,
+  );
 
   const [script, setScript] = useState<UsageScript>(() => {
     const savedScript = provider.meta?.usage_script;
@@ -362,6 +405,14 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
     if (detectBalanceProvider(providerCredentials.baseUrl)) {
       return createUsageScript();
+    }
+
+    // 新配置：胜算云默认开启余额检测，并复用出厂模板
+    if (isShengsuanyun) {
+      return createUsageScript({
+        enabled: true,
+        code: PRESET_TEMPLATES[TEMPLATE_TYPES.SHENGSUANYUN],
+      });
     }
 
     if (isOfficialSubscription) {
@@ -458,6 +509,13 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       if (existingScript?.apiKey || existingScript?.baseUrl) {
         return TEMPLATE_TYPES.GENERAL;
       }
+      // 向后兼容：旧版出厂胜算云脚本没有保存 templateType
+      if (
+        isShengsuanyun &&
+        existingScript?.code?.includes("{{shengsuanyunJwt}}")
+      ) {
+        return TEMPLATE_TYPES.SHENGSUANYUN;
+      }
       // 新配置：如果 URL 匹配 Coding Plan 供应商，自动选择 Coding Plan 模板
       if (detectCodingPlanProvider(providerCredentials.baseUrl)) {
         return TEMPLATE_TYPES.TOKEN_PLAN;
@@ -519,6 +577,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
         | "token_plan"
         | "balance"
         | "official_subscription"
+        | "shengsuanyun"
         | undefined,
     };
     onSave(scriptWithTemplate);
@@ -686,7 +745,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
         script.baseUrl,
         script.accessToken,
         script.userId,
-        selectedTemplate as "custom" | "general" | "newapi" | undefined,
+        selectedTemplate as TemplateType | undefined,
       );
       if (result.success && result.data && result.data.length > 0) {
         const summary = result.data
@@ -835,6 +894,16 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           accessToken: undefined,
           userId: undefined,
         });
+      } else if (presetName === TEMPLATE_TYPES.SHENGSUANYUN) {
+        // 胜算云余额由登录 JWT 查询，不使用网关 Key 或其他显式凭据
+        setScript({
+          ...script,
+          code: preset,
+          apiKey: undefined,
+          baseUrl: undefined,
+          accessToken: undefined,
+          userId: undefined,
+        });
       }
       setSelectedTemplate(presetName);
     }
@@ -920,6 +989,9 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             <div className="flex gap-2 flex-wrap">
               {Object.keys(PRESET_TEMPLATES)
                 .filter((name) => {
+                  if (isShengsuanyun) {
+                    return name === TEMPLATE_TYPES.SHENGSUANYUN;
+                  }
                   const isCopilotProvider =
                     provider.meta?.providerType === "github_copilot";
                   // Copilot 供应商只显示 copilot 模板
@@ -933,7 +1005,8 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                   // 非 Copilot 供应商不显示 copilot 模板
                   return (
                     name !== TEMPLATE_TYPES.GITHUB_COPILOT &&
-                    name !== TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION
+                    name !== TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION &&
+                    name !== TEMPLATE_TYPES.SHENGSUANYUN
                   );
                 })
                 .map((name) => {

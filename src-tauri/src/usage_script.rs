@@ -18,8 +18,13 @@ pub async fn execute_usage_script(
     ssy_jwt: Option<&str>,
 ) -> Result<Value, AppError> {
     // 检测是否为自定义模板模式
-    // 优先使用前端传递的 template_type
-    let is_custom_template = template_type.map(|t| t == "custom").unwrap_or(false);
+    // 优先使用前端传递的 template_type。
+    // "shengsuanyun" 模板与 custom 同权：其请求地址（api.shengsuanyun.com 的
+    // 用户接口）与卡片 base_url（router.shengsuanyun.com 的模型网关）天然不同源，
+    // 必须跳过同源检查；脚本内的 URL 由出厂模板固定为 HTTPS。
+    let is_custom_template = template_type
+        .map(|t| t == "custom" || t == "shengsuanyun")
+        .unwrap_or(false);
 
     // 1. 替换模板变量，避免泄露敏感信息
     let script_with_vars = build_script_with_vars(
@@ -629,6 +634,27 @@ fn is_loopback_host(url: &Url) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn shengsuanyun_template_skips_same_origin_check() {
+        // 胜算云用户接口（api.）与网关 base_url（router.）不同源；
+        // shengsuanyun 模板按 custom 处理（is_custom_template=true）→ 放行
+        let result = validate_request_url(
+            "https://api.shengsuanyun.com/user/info",
+            "https://router.shengsuanyun.com/api",
+            true,
+        );
+        assert!(result.is_ok());
+        // 通用模板（非 custom）仍然拦截跨域请求
+        let result = validate_request_url(
+            "https://api.shengsuanyun.com/user/info",
+            "https://router.shengsuanyun.com/api",
+            false,
+        );
+        assert!(result.is_err());
+    }
+
     use super::*;
 
     #[test]

@@ -270,7 +270,7 @@ pub fn default_usage_script_meta() -> crate::provider::ProviderMeta {
             base_url: None,
             access_token: None,
             user_id: None,
-            template_type: None,
+            template_type: Some("shengsuanyun".to_string()),
             auto_query_interval: Some(5),
             coding_plan_provider: None,
             access_key_id: None,

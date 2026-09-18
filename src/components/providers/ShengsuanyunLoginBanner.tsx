@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { shengsuanyunApi } from "@/lib/api/shengsuanyun";
+import { analyticsApi } from "@/lib/api/analytics";
 
 export function ShengsuanyunLoginBanner({
   appId,
@@ -80,7 +81,8 @@ export function ShengsuanyunLoginBanner({
           onClick={() => {
             // 直接发起 OAuth（打开浏览器授权页），登录完成后由全局桥自动绑定；
             // 同时跳转认证中心展示进度
-            startLoginFlow(appId).catch((e) =>
+            void analyticsApi.track("recharge_clicked", { entry: "banner" }).catch(() => {});
+            startLoginFlow(appId, "banner").catch((e) =>
               console.error("start shengsuanyun login failed", e),
             );
             window.dispatchEvent(

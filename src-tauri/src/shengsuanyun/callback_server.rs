@@ -63,9 +63,31 @@ async fn handle_callback(
         _ => return Html(error_page("缺少授权参数，请返回 SSY-Switch 重新登录。")),
     };
 
+    let db = manager.db_handle();
     match manager.complete_login(&code, &state, port).await {
-        Ok(_) => Html(success_page()),
-        Err(e) => Html(error_page(&format!("登录失败：{e}"))),
+        Ok(_) => {
+            crate::analytics::track(
+                &db,
+                "login_callback",
+                &serde_json::json!({ "result": "ok" }),
+            );
+            Html(success_page())
+        }
+        Err(e) => {
+            let class = if e.contains("state") {
+                "invalid_state"
+            } else if e.contains("token") || e.contains("401") {
+                "token_invalid"
+            } else {
+                "upstream_error"
+            };
+            crate::analytics::track(
+                &db,
+                "login_callback",
+                &serde_json::json!({ "result": "failed", "reason_class": class }),
+            );
+            Html(error_page(&format!("登录失败：{e}")))
+        }
     }
 }
 

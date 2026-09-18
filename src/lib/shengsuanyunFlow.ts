@@ -6,6 +6,7 @@
 // 事件桥保证任意入口发起的登录完成后都会自动绑定。
 import { invoke } from "@tauri-apps/api/core";
 import { settingsApi } from "./api/settings";
+import { analyticsApi } from "./api/analytics";
 import {
   bindShengsuanyunAccount,
   bindShengsuanyunAllApps,
@@ -24,8 +25,10 @@ let bridgeInstalled = false;
  */
 export async function startLoginFlow(
   appId?: string | null,
+  source = "unknown",
 ): Promise<{ authorizationUrl: string; sessionId: string }> {
   lastBindApp = appId ?? null;
+  void analyticsApi.track("login_started", { app: appId ?? null, source });
   const start = await invoke<{
     authorizationUrl: string;
     sessionId: string;
@@ -53,6 +56,12 @@ async function handleOAuthComplete(): Promise<void> {
     const results = app
       ? [await bindShengsuanyunAccount(app, latest.id)]
       : await bindShengsuanyunAllApps(latest.id);
+    for (const r of results) {
+      void analyticsApi.track("bind_completed", {
+        app: app ?? null,
+        status: r.status,
+      });
+    }
     if (results.some((r) => r.status === "conflict")) {
       window.dispatchEvent(new CustomEvent("ssy-bind-conflict"));
     }

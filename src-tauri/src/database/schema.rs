@@ -432,6 +432,8 @@ impl Database {
 
         // SSY-Switch: 胜算云账号与绑定表
         Self::create_shengsuanyun_tables(conn)?;
+        // SSY-Switch: 埋点事件队列表
+        Self::create_analytics_table(conn)?;
         Ok(())
     }
 
@@ -557,7 +559,9 @@ impl Database {
                         Self::set_user_version(conn, 19)?;
                     }
                     19 => {
-                        log::info!("迁移数据库从 v19 到 v20（绑定记录记忆选中的胜算云 Key ID）");
+                        log::info!(
+                            "迁移数据库从 v19 到 v20（绑定记录记忆选中的 Key + 埋点事件队列表）"
+                        );
                         Self::migrate_v19_to_v20(conn)?;
                         Self::set_user_version(conn, 20)?;
                     }
@@ -1712,6 +1716,26 @@ impl Database {
                 "INTEGER",
             )?;
         }
+        Ok(())
+    }
+
+    /// SSY-Switch: 埋点事件队列（本地缓存，批量上报；不上传任何敏感字段）
+    pub(crate) fn create_analytics_table(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS analytics_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts INTEGER NOT NULL,
+                event TEXT NOT NULL,
+                props TEXT NOT NULL DEFAULT '{}',
+                flushed INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analytics_unflushed
+             ON analytics_events(flushed, id)",
+            [],
+        )?;
         Ok(())
     }
 

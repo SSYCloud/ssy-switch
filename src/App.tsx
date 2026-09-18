@@ -185,6 +185,13 @@ function App() {
     useState<SkillsPageSource>("repos");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
 
+  // 埋点：切换 App
+  useEffect(() => {
+    void import("@/lib/api/analytics").then((m) =>
+      m.analyticsApi.track("app_selected", { app: activeApp }).catch(() => {}),
+    );
+  }, [activeApp]);
+
   // 胜算云登录全局桥：任何入口发起的登录，完成后自动绑定（App 生命周期一次）
   useEffect(() => {
     void import("@/lib/shengsuanyunFlow").then((m) =>

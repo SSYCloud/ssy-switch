@@ -21,6 +21,18 @@ export function useUsageEventBridge() {
 
     (async () => {
       const off = await listen("usage-log-recorded", () => {
+        // 埋点：首次成功调用（每安装一次；D1 首调的客户端近似值，
+        // 权威口径在服务端网关）
+        try {
+          if (!localStorage.getItem("ssy:first_call_tracked")) {
+            localStorage.setItem("ssy:first_call_tracked", "1");
+            void import("@/lib/api/analytics").then((m) =>
+              m.analyticsApi.track("call_succeeded", { first: true }).catch(() => {}),
+            );
+          }
+        } catch {
+          /* ignore */
+        }
         // invalidate 整个 usage 命名空间：summary / trends / providerStats /
         // modelStats / logs 全部跟着重拉
         queryClient.invalidateQueries({ queryKey: usageKeys.all });

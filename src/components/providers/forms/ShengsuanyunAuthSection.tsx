@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/shengsuanyun";
 import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
 import { startLoginFlow } from "@/lib/shengsuanyunFlow";
+import { analyticsApi } from "@/lib/api/analytics";
 import { settingsApi } from "@/lib/api/settings";
 import { SSY_RECHARGE_URL } from "@/config/constants";
 import {
@@ -169,7 +170,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     try {
       const app = overrideApp ?? targetApp;
       bindAppRef.current = app ?? null;
-      await startLoginFlow(app);
+      await startLoginFlow(app, "auth_center");
       // pending 态由 ssy-login-pending 事件驱动（flow 内已派发）
     } catch (e) {
       setPhase("error");
@@ -220,6 +221,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const openRecharge = async () => {
     try {
       markRechargeOpened();
+      void analyticsApi.track("recharge_clicked", { entry: "auth_center" }).catch(() => {});
       await settingsApi.openExternal(SSY_RECHARGE_URL);
     } catch (e) {
       setError(String(e));

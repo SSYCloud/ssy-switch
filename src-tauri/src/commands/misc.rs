@@ -7192,3 +7192,30 @@ mod tests {
         );
     }
 }
+
+// ===== SSY-Switch 埋点 =====
+
+/// 记录埋点事件（入本地队列；上报端点就绪后批量上传）。
+/// 隐私红线：event/props 为固定结构，禁止携带 Key/jwt/code/邮箱/完整 uid。
+#[tauri::command]
+pub async fn analytics_track(
+    state: State<'_, crate::store::AppState>,
+    event: String,
+    props: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let db = state.db.clone();
+    let event = event.trim().to_lowercase();
+    if event.is_empty() || event.len() > 64 {
+        return Err("invalid event name".into());
+    }
+    crate::analytics::track(&db, &event, &props.unwrap_or_else(|| serde_json::json!({})));
+    Ok(())
+}
+
+/// 匿名安装 ID（首启生成，稳定不变；不含用户信息）
+#[tauri::command]
+pub async fn analytics_install_id(
+    state: State<'_, crate::store::AppState>,
+) -> Result<String, String> {
+    Ok(crate::analytics::install_id(&state.db))
+}

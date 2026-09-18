@@ -1,3 +1,4 @@
+mod analytics;
 mod app_config;
 mod app_store;
 mod auto_launch;
@@ -1199,6 +1200,16 @@ pub fn run() {
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state);
 
+            // SSY-Switch 埋点：安装/打开事件 + 周期 flush worker
+            {
+                let db = app.state::<AppState>().db.clone();
+                analytics::track(&db, "app_install", &serde_json::json!({
+                    "install_id": analytics::install_id(&db)
+                }));
+                analytics::track(&db, "app_open", &serde_json::json!({}));
+                tauri::async_runtime::spawn(analytics::flush_worker(db));
+            }
+
             // SSY-Switch 启动对账：已登录但没有任何绑定时（如旧版本登录、
             // 或绑定存储切换后），自动为 Claude/Codex/Gemini 三端补齐绑定并激活
             {
@@ -1600,6 +1611,8 @@ pub fn run() {
             commands::update_toml_common_config_snippet,
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
+            commands::analytics_track,
+            commands::analytics_install_id,
             commands::shengsuanyun_start_login,
             commands::shengsuanyun_bind_account,
             commands::shengsuanyun_bind_all_apps,

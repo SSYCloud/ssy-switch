@@ -142,6 +142,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/GatewayBalance"
 
+  /user/recharge:
+    post:
+      operationId: createRechargeOrder
+      summary: 创建充值订单（返回收款二维码链接）
+      description: |
+        **两种互斥模式**（2026-09-18 实测）：
+        - `recahrgeId: null` + `amounts`（1e-4 元）= 自定义金额；
+          **最低 ¥30**（amounts ≥ 300000，低于报 `code: 70002`）
+        - `recahrgeId: <套餐id>`（如 22）= **定额套餐**，服务端忽略 `amounts`
+          （22 档固定 ¥10，传任意 amounts 均 Price=100000）
+
+        `orderId` 为客户端生成的 16 位 hex；服务端可能改写，**支付状态查询
+        （/user/payQuery）以响应中的 `payOrder.OrderID` 为准**。
+        `Status: 0` 为未支付；响应 `url` 为收款码链接（渲染二维码即可收款）。
+        未支付订单自动过期，不扣款。
+      security:
+        - XTokenJwt: []
+      servers:
+        - url: https://api.shengsuanyun.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amounts, payWay, orderId]
+              properties:
+                amounts:
+                  $ref: "#/components/schemas/AmountT1e4"
+                  description: 充值金额；recahrgeId 非空时被服务端忽略
+                payWay:
+                  type: string
+                  enum: [alipay]
+                  description: 支付渠道（实测 alipay；微信渠道待确认）
+                recahrgeId:
+                  type: integer
+                  nullable: true
+                  description: 定额套餐 id（null = 自定义金额）；22 档实测固定 ¥10
+                orderId:
+                  type: string
+                  description: 客户端生成的订单标识（16 位 hex）
+      responses:
+        "200":
+          description: 下单结果（可能仍是业务失败，以 code 区分）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/RechargeOrderData"
+
+  /user/payQuery:
+    post:
+      operationId: queryRechargeStatus
+      summary: 查询充值订单支付状态
+      description: |
+        `msg` 承载状态语义：未支付返回 `unpaid`；支付成功返回其他值
+        （具体成功文案待实测确认）。`orderId` 使用下单响应中的
+        `payOrder.OrderID`。
+      security:
+        - XTokenJwt: []
+      servers:
+        - url: https://api.shengsuanyun.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId]
+              properties:
+                orderId:
+                  type: string
+      responses:
+        "200":
+          description: 支付状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      msg:
+                        type: string
+                        description: "unpaid = 未支付；其他值 = 终态（成功文案待实测）"
+
   /auth/keys:
     post:
       operationId: exchangeCode
@@ -680,6 +770,32 @@ components:
           credit_limit_cny:
             type: number
             description: 授信额度（元）
+
+  RechargeOrderData:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 收款码链接（如 https://qr.alipay.com/...，渲染二维码即可收款）
+      payOrder:
+        type: object
+        properties:
+          ID: { type: integer }
+          OrderID:
+            type: string
+            description: 服务端订单标识（payQuery 用它，不是客户端生成的 orderId）
+          Price:
+            $ref: "#/components/schemas/AmountT1e4"
+          Amount:
+            $ref: "#/components/schemas/AmountT1e4"
+          GiftAmount:
+            $ref: "#/components/schemas/AmountT1e4"
+          RechargeID: { type: integer, nullable: true }
+          PayMethod: { type: string }
+          Status:
+            type: integer
+            description: 0 = 未支付
+          Err: { type: string }
 
   ModelCatalog:
     type: object

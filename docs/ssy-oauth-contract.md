@@ -84,6 +84,22 @@ x-token: <jwt_token>          # 必须用 jwt_token
 - 选择结果只落 `shengsuanyun_bindings.key_id` 这个标识；重登/启动时按 `key_id` 优先复用，
   失效才回落到账号默认 Key。
 
+## 5b. 充值下单与支付状态（2026-09-18 实测，站内充值 P2 数据源）
+
+```
+POST https://api.shengsuanyun.com/user/recharge      x-token: <jwt_token>
+POST https://api.shengsuanyun.com/user/payQuery      x-token: <jwt_token>
+```
+
+- **两种互斥模式**：`recahrgeId: null` + `amounts`（1e-4 元）= 自定义金额，
+  **最低 ¥30**（低于报 `code: 70002`）；`recahrgeId: 22` = 定额 ¥10 套餐
+  （服务端忽略 amounts，传任意值 Price 均 100000）
+- 下单响应 `data.url` 为收款码链接（如 `https://qr.alipay.com/...`），
+  渲染二维码即可收款；未支付订单自动过期不扣款
+- `payQuery` 按 `data.payOrder.OrderID` 查询（注意不是客户端生成的 orderId）；
+  `msg` 承载状态：`unpaid` = 未支付，支付成功为其他值（成功文案待实测）
+- 已知未确认：微信渠道 `payWay` 取值、套餐目录接口、订单过期时长
+
 ## 6. 客户端安全约束
 
 | 项 | 值 |

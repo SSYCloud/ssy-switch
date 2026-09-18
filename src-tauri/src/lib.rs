@@ -2,6 +2,7 @@ mod analytics;
 mod app_config;
 mod app_store;
 mod auto_launch;
+mod ccswitch_import;
 mod claude_desktop_config;
 mod claude_mcp;
 mod claude_plugin;
@@ -1611,11 +1612,14 @@ pub fn run() {
             commands::update_toml_common_config_snippet,
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
+            commands::ccswitch_import_preview,
+            commands::ccswitch_import_execute,
             commands::analytics_track,
             commands::analytics_install_id,
             commands::shengsuanyun_user_usage,
             commands::shengsuanyun_bill_list,
             commands::shengsuanyun_modality_usage,
+            commands::shengsuanyun_voucher_list,
             commands::shengsuanyun_start_login,
             commands::shengsuanyun_bind_account,
             commands::shengsuanyun_bind_all_apps,

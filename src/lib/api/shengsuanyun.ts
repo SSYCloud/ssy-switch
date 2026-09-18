@@ -138,6 +138,30 @@ export function getBillList(page = 1, pageSize = 10): Promise<{ bills: BillEntry
   return invoke("shengsuanyun_bill_list", { page, pageSize });
 }
 
+/** 上游 /voucher/user_voucher_list 的单张代金券（金额字段单位 1e-4 元） */
+export interface VoucherRecord {
+  id: number;
+  title: string;
+  des: string;
+  /** success=可用；used=已用完；其余（如 expired）按原文展示 */
+  status: string;
+  original_amount: number;
+  remaining_amount: number;
+  used_amount: number;
+  expired_amount: number;
+  /** all=通用；其它值（如 loomloom）为产品专属券，不计入"体验券"汇总 */
+  scope: string;
+  redeem_time: string;
+  expire_time: string;
+}
+
+export function getVoucherList(): Promise<{
+  voucher_records: VoucherRecord[];
+  total: number;
+}> {
+  return invoke("shengsuanyun_voucher_list");
+}
+
 export interface ModalityUsageResponse {
   usages: { date: string; details: { model: string; total_amount: number }[] }[];
   total: number;
@@ -215,4 +239,5 @@ export const shengsuanyunApi = {
   getUserUsage,
   getBillList,
   getModalityUsage,
+  getVoucherList,
 };

@@ -25,6 +25,7 @@ import {
   KeyRound,
   Shield,
   Cpu,
+  User,
   LayoutDashboard,
   Loader2,
   RefreshCw,
@@ -1370,9 +1371,9 @@ function App() {
                 <Button
                   asChild
                   variant="ghost"
-                  size="icon"
+                  size="sm"
                   title={t("common.docsCenter")}
-                  className="hover:bg-black/5 dark:hover:bg-white/5"
+                  className="h-9 gap-1.5 px-3 hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <a
                     href="https://lean.shengsuanyun.com/apidocs/guides/quick-start"
@@ -1381,7 +1382,21 @@ function App() {
                     aria-label={t("common.docsCenter")}
                   >
                     <BookOpen className="w-4 h-4" />
+                    {t("common.docsCenter")}
                   </a>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSettingsDefaultTab("auth");
+                    setCurrentView("settings");
+                  }}
+                  title={t("common.personalCenter")}
+                  className="h-9 gap-1.5 px-3 hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <User className="w-4 h-4" />
+                  {t("common.personalCenter")}
                 </Button>
                 <UpdateBadge
                   onClick={() => {

@@ -135,6 +135,14 @@ pub async fn shengsuanyun_user_usage(
     state.manager.user_usage(&start_date, &end_date).await
 }
 
+/// 代金券/体验券明细（voucher_records 金额单位 1e-4 元）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_voucher_list(
+    state: State<'_, ShengsuanyunState>,
+) -> Result<serde_json::Value, String> {
+    state.manager.voucher_list().await
+}
+
 /// 登出：清理 Keychain 凭据、DB 账号与绑定。
 #[tauri::command(rename_all = "camelCase")]
 pub async fn shengsuanyun_logout(

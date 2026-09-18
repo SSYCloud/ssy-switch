@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { CcSwitchImportSection } from "@/components/settings/CcSwitchImportSection";
 import { motion } from "framer-motion";
 import {
   Loader2,
@@ -320,6 +321,7 @@ export function SettingsPage({
                     transition={{ duration: 0.3 }}
                     className="space-y-4"
                   >
+                    <CcSwitchImportSection />
                     <Accordion
                       type="multiple"
                       defaultValue={[]}

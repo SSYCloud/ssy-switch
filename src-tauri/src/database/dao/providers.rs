@@ -1049,3 +1049,84 @@ mod shengsuanyun_seed_tests {
         assert!(providers.get("shengsuanyun").is_none());
     }
 }
+
+// ===== SSY-Switch：从原版 CC Switch 一键导入（只读逐行） =====
+
+/// 导入行（列映射后的中间结构）
+pub struct ImportedProviderRow {
+    pub id: String,
+    pub app_type: String,
+    pub name: String,
+    pub settings_config: String,
+    pub website_url: Option<String>,
+    pub category: Option<String>,
+    pub created_at: Option<i64>,
+    pub notes: Option<String>,
+    pub icon: Option<String>,
+    pub icon_color: Option<String>,
+    pub meta: Option<String>,
+}
+
+impl Database {
+    /// (app_type, id) 是否已存在
+    pub fn provider_exists(&self, app_type: &str, id: &str) -> Result<bool, String> {
+        let conn = lock_conn!(self.conn);
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM providers WHERE app_type = ?1 AND id = ?2",
+                params![app_type, id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n > 0)
+    }
+
+    /// 全量 (app_type, id) 键（冲突检测用）
+    pub fn list_all_provider_keys(&self) -> Result<Vec<(String, String)>, String> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT app_type, id FROM providers")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// 写入一条导入的供应商：追加到该 App 排序尾部，**不激活**、不进故障转移队列。
+    /// 返回 Ok(true) 表示已插入；Ok(false) 表示 (id, app_type) 已存在被跳过。
+    pub fn insert_imported_provider(&self, row: &ImportedProviderRow) -> Result<bool, String> {
+        if self.provider_exists(&row.app_type, &row.id)? {
+            return Ok(false);
+        }
+        let sort_index = self.next_sort_index_for_app(&row.app_type)?;
+        let conn = lock_conn!(self.conn);
+        let n = conn
+            .execute(
+                "INSERT OR IGNORE INTO providers
+                 (id, app_type, name, settings_config, website_url, category,
+                  created_at, sort_index, notes, icon, icon_color, meta,
+                  is_current, in_failover_queue)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, 0)",
+                params![
+                    row.id,
+                    row.app_type,
+                    row.name,
+                    row.settings_config,
+                    row.website_url,
+                    row.category,
+                    row.created_at,
+                    sort_index as i64,
+                    row.notes,
+                    row.icon,
+                    row.icon_color,
+                    row.meta.clone().unwrap_or_else(|| "{}".to_string()),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n > 0)
+    }
+}

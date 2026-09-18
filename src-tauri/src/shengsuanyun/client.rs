@@ -240,6 +240,29 @@ impl SsyClient {
         Self::unwrap_business_data(v)
     }
 
+    /// 代金券/体验券明细（官方控制台"卡券"页同款接口）。
+    /// data.voucher_records[] 的金额字段单位 1e-4 元；scope 标记可用范围
+    /// （all=通用，loomloom 等为产品专属——专属券不计入 /user/info 的 VoucherBalance）。
+    pub async fn fetch_voucher_list(&self, token: &str) -> Result<Value, String> {
+        let resp = self
+            .http
+            .get(format!("{SSY_API_BASE}/voucher/user_voucher_list"))
+            .header("x-token", token)
+            .send()
+            .await
+            .map_err(|e| format!("voucher list request failed: {e}"))?;
+        Self::check_auth_and_status(
+            resp.status() == reqwest::StatusCode::UNAUTHORIZED,
+            resp.status(),
+        )
+        .await?;
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("decode voucher list: {e}"))?;
+        Self::unwrap_business_data(v)
+    }
+
     async fn check_auth_and_status(
         unauthorized: bool,
         status: reqwest::StatusCode,

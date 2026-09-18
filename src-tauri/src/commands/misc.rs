@@ -7219,3 +7219,33 @@ pub async fn analytics_install_id(
 ) -> Result<String, String> {
     Ok(crate::analytics::install_id(&state.db))
 }
+
+/// 预览原版 CC Switch 数据库可导入内容（只读，不写任何数据）
+#[tauri::command]
+pub async fn ccswitch_import_preview(
+    state: State<'_, crate::store::AppState>,
+    path: Option<String>,
+) -> Result<crate::ccswitch_import::ImportPreview, String> {
+    let db = state.db.clone();
+    let path = path
+        .map(PathBuf::from)
+        .unwrap_or_else(crate::ccswitch_import::default_source_path);
+    tauri::async_runtime::spawn_blocking(move || crate::ccswitch_import::preview(&db, &path))
+        .await
+        .map_err(|e| format!("预览任务失败: {e}"))?
+}
+
+/// 执行导入：自动备份本地库 → 只读逐行导入原版供应商（不激活、跳过冲突）
+#[tauri::command]
+pub async fn ccswitch_import_execute(
+    state: State<'_, crate::store::AppState>,
+    path: Option<String>,
+) -> Result<crate::ccswitch_import::ImportResult, String> {
+    let db = state.db.clone();
+    let path = path
+        .map(PathBuf::from)
+        .unwrap_or_else(crate::ccswitch_import::default_source_path);
+    tauri::async_runtime::spawn_blocking(move || crate::ccswitch_import::execute(&db, &path))
+        .await
+        .map_err(|e| format!("导入任务失败: {e}"))?
+}

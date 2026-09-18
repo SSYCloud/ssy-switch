@@ -296,6 +296,20 @@ impl ShengsuanyunAuthManager {
             .await
     }
 
+    /// 代金券/体验券明细（含产品专属券，金额单位 1e-4 元）。
+    pub async fn voucher_list(&self) -> Result<Value, String> {
+        let account = self
+            .db
+            .list_shengsuanyun_accounts()?
+            .first()
+            .cloned()
+            .ok_or_else(|| "not logged in".to_string())?;
+        let credentials = creds::load_credentials(&self.db, &account.id)?;
+        self.client
+            .fetch_voucher_list(credentials.identity_token())
+            .await
+    }
+
     /// 登出：删除 Keychain 凭据 + DB 账号 + 绑定记录。幂等。
     pub fn logout(&self, account_id: &str) -> Result<(), String> {
         creds::delete_credentials(&self.db, account_id)?;

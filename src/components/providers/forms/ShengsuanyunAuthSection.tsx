@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { BarChart3, Loader2, LogIn, LogOut, RefreshCw, Wallet } from "lucide-react";
+import { BarChart3, Loader2, LogIn, LogOut, RefreshCw, Ticket, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   shengsuanyunApi,
@@ -17,6 +17,7 @@ import { analyticsApi } from "@/lib/api/analytics";
 import { settingsApi } from "@/lib/api/settings";
 import { ShengsuanyunUsageStats } from "./ShengsuanyunUsageStats";
 import { ShengsuanyunBillList } from "./ShengsuanyunBillList";
+import { ShengsuanyunVoucherList } from "./ShengsuanyunVoucherList";
 import { SSY_RECHARGE_URL } from "@/config/constants";
 import {
   markRechargeOpened,
@@ -56,6 +57,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const [intent, setIntent] = useState<OAuthIntent | null>(null);
   const [statsOpen, setStatsOpen] = useState(false);
   const [billsOpen, setBillsOpen] = useState(false);
+  const [vouchersOpen, setVouchersOpen] = useState(false);
   const [health, setHealth] = useState<{ app: string; ok: boolean } | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
@@ -399,10 +401,24 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             <Button
               variant="outline"
               size="sm"
+              aria-label={t("shengsuanyun.voucherList", { defaultValue: "代金券" })}
+              title={t("shengsuanyun.voucherList", { defaultValue: "代金券" })}
+              onClick={() => {
+                setVouchersOpen((v) => !v);
+                setStatsOpen(false);
+                setBillsOpen(false);
+              }}
+            >
+              <Ticket className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               aria-label={t("shengsuanyun.usageStats", { defaultValue: "调用统计" })}
               onClick={() => {
                 setStatsOpen((v) => !v);
                 setBillsOpen(false);
+                setVouchersOpen(false);
                 void analyticsApi.track("usage_stats_opened").catch(() => {});
               }}
             >
@@ -415,6 +431,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
               onClick={() => {
                 setBillsOpen((v) => !v);
                 setStatsOpen(false);
+                setVouchersOpen(false);
               }}
             >
               {t("shengsuanyun.billList", { defaultValue: "充值记录" })}
@@ -520,6 +537,9 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
 
       {statsOpen && <ShengsuanyunUsageStats onClose={() => setStatsOpen(false)} />}
       {billsOpen && <ShengsuanyunBillList onClose={() => setBillsOpen(false)} />}
+      {vouchersOpen && (
+        <ShengsuanyunVoucherList onClose={() => setVouchersOpen(false)} />
+      )}
 
       {phase === "error" && error && (
         <div className="space-y-2" role="alert">

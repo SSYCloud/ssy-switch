@@ -122,6 +122,34 @@ export function getUserUsage(
   return invoke("shengsuanyun_user_usage", { startDate, endDate });
 }
 
+export interface BillEntry {
+  ID: number;
+  CreatedAt: string;
+  /** 1e-4 元 */
+  Asset: number;
+  /** 变动后余额，1e-4 元 */
+  Balance: number;
+  BalanceStatementType: string;
+  BillType: string;
+  BillSubType: string;
+}
+
+export function getBillList(page = 1, pageSize = 10): Promise<{ bills: BillEntry[] }> {
+  return invoke("shengsuanyun_bill_list", { page, pageSize });
+}
+
+export interface ModalityUsageResponse {
+  usages: { date: string; details: { model: string; total_amount: number }[] }[];
+  total: number;
+}
+
+export function getModalityUsage(
+  startDate: string,
+  endDate: string,
+): Promise<ModalityUsageResponse> {
+  return invoke("shengsuanyun_modality_usage", { startDate, endDate });
+}
+
 export function bindShengsuanyunAccount(
   appType: string,
   accountId: string,
@@ -185,4 +213,6 @@ export const shengsuanyunApi = {
   getBinding: getShengsuanyunBinding,
   setBindingKey: setShengsuanyunBindingKey,
   getUserUsage,
+  getBillList,
+  getModalityUsage,
 };

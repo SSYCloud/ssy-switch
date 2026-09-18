@@ -99,6 +99,32 @@ pub async fn shengsuanyun_refresh_balance(
     state.manager.refresh_balance(&account_id).await
 }
 
+/// 充值/账单流水（分页；Asset/Balance 单位 1e-4 元）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_bill_list(
+    state: State<'_, ShengsuanyunState>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+) -> Result<serde_json::Value, String> {
+    state
+        .manager
+        .bill_list(page.unwrap_or(1).max(1), page_size.unwrap_or(10).clamp(1, 50))
+        .await
+}
+
+/// 多模态调用统计（按日/按模型；单位 1e-7 元）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_modality_usage(
+    state: State<'_, ShengsuanyunState>,
+    start_date: String,
+    end_date: String,
+) -> Result<serde_json::Value, String> {
+    state
+        .manager
+        .modality_usage(&start_date, &end_date)
+        .await
+}
+
 /// 查询大模型调用记录（按日/按模型聚合；返回原始 JSON，单位 1e-7 元）。
 #[tauri::command(rename_all = "camelCase")]
 pub async fn shengsuanyun_user_usage(

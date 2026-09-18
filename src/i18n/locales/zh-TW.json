@@ -3307,6 +3307,17 @@
     "noUsage": "區間內無調用記錄",
     "model": "模型",
     "tokens": "Tokens",
-    "amount": "消費"
+    "amount": "消費",
+    "billList": "儲值記錄",
+    "noBills": "暫無帳單記錄",
+    "billTime": "時間",
+    "billType": "類型",
+    "billAmount": "金額",
+    "billBalance": "餘額快照",
+    "billRecharge": "儲值",
+    "payWechat": "微信支付",
+    "payAlipay": "支付寶",
+    "loadMore": "載入更多",
+    "modalityUsage": "多模態調用（圖片/影片）"
   }
 }

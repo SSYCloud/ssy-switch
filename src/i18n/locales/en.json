@@ -3311,6 +3311,17 @@
     "noUsage": "No usage in this period",
     "model": "Model",
     "tokens": "Tokens",
-    "amount": "Spent"
+    "amount": "Spent",
+    "billList": "Recharge History",
+    "noBills": "No bills yet",
+    "billTime": "Time",
+    "billType": "Type",
+    "billAmount": "Amount",
+    "billBalance": "Balance",
+    "billRecharge": "Recharge",
+    "payWechat": "WeChat Pay",
+    "payAlipay": "Alipay",
+    "loadMore": "Load more",
+    "modalityUsage": "Multimodal usage (image/video)"
   }
 }

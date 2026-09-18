@@ -16,6 +16,7 @@ import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { analyticsApi } from "@/lib/api/analytics";
 import { settingsApi } from "@/lib/api/settings";
 import { ShengsuanyunUsageStats } from "./ShengsuanyunUsageStats";
+import { ShengsuanyunBillList } from "./ShengsuanyunBillList";
 import { SSY_RECHARGE_URL } from "@/config/constants";
 import {
   markRechargeOpened,
@@ -54,6 +55,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const [busy, setBusy] = useState(false);
   const [intent, setIntent] = useState<OAuthIntent | null>(null);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [billsOpen, setBillsOpen] = useState(false);
   const [health, setHealth] = useState<{ app: string; ok: boolean } | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
@@ -400,10 +402,22 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
               aria-label={t("shengsuanyun.usageStats", { defaultValue: "调用统计" })}
               onClick={() => {
                 setStatsOpen((v) => !v);
+                setBillsOpen(false);
                 void analyticsApi.track("usage_stats_opened").catch(() => {});
               }}
             >
               <BarChart3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={t("shengsuanyun.billList", { defaultValue: "充值记录" })}
+              onClick={() => {
+                setBillsOpen((v) => !v);
+                setStatsOpen(false);
+              }}
+            >
+              {t("shengsuanyun.billList", { defaultValue: "充值记录" })}
             </Button>
             <Button
               variant="outline"
@@ -505,6 +519,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       )}
 
       {statsOpen && <ShengsuanyunUsageStats onClose={() => setStatsOpen(false)} />}
+      {billsOpen && <ShengsuanyunBillList onClose={() => setBillsOpen(false)} />}
 
       {phase === "error" && error && (
         <div className="space-y-2" role="alert">

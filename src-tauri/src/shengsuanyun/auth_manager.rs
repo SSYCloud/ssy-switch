@@ -268,6 +268,34 @@ impl ShengsuanyunAuthManager {
             .await
     }
 
+    /// 充值/账单流水（分页）。
+    pub async fn bill_list(&self, page: i64, page_size: i64) -> Result<Value, String> {
+        let account = self
+            .db
+            .list_shengsuanyun_accounts()?
+            .first()
+            .cloned()
+            .ok_or_else(|| "not logged in".to_string())?;
+        let credentials = creds::load_credentials(&self.db, &account.id)?;
+        self.client
+            .fetch_bill_list(page, page_size, credentials.identity_token())
+            .await
+    }
+
+    /// 多模态调用统计。
+    pub async fn modality_usage(&self, start_date: &str, end_date: &str) -> Result<Value, String> {
+        let account = self
+            .db
+            .list_shengsuanyun_accounts()?
+            .first()
+            .cloned()
+            .ok_or_else(|| "not logged in".to_string())?;
+        let credentials = creds::load_credentials(&self.db, &account.id)?;
+        self.client
+            .fetch_modality_usage(start_date, end_date, credentials.identity_token())
+            .await
+    }
+
     /// 登出：删除 Keychain 凭据 + DB 账号 + 绑定记录。幂等。
     pub fn logout(&self, account_id: &str) -> Result<(), String> {
         creds::delete_credentials(&self.db, account_id)?;

@@ -3306,6 +3306,17 @@
     "noUsage": "期間内の利用記録はありません",
     "model": "モデル",
     "tokens": "トークン",
-    "amount": "消費"
+    "amount": "消費",
+    "billList": "チャージ履歴",
+    "noBills": "請求記録はありません",
+    "billTime": "日時",
+    "billType": "種類",
+    "billAmount": "金額",
+    "billBalance": "残高",
+    "billRecharge": "チャージ",
+    "payWechat": "WeChat Pay",
+    "payAlipay": "Alipay",
+    "loadMore": "さらに読み込む",
+    "modalityUsage": "マルチモーダル利用（画像/動画）"
   }
 }

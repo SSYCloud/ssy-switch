@@ -185,6 +185,82 @@ impl SsyClient {
         Ok(v.get("data").cloned().unwrap_or(v))
     }
 
+    /// 充值/账单流水（POST，分页）。Asset/Balance 单位 1e-4 元。
+    /// 注意：该接口只接受 POST，GET 会 404。
+    pub async fn fetch_bill_list(
+        &self,
+        page: i64,
+        page_size: i64,
+        token: &str,
+    ) -> Result<Value, String> {
+        let resp = self
+            .http
+            .post(format!("{SSY_API_BASE}/userorder/billlist"))
+            .header("x-token", token)
+            .json(&serde_json::json!({ "page": page, "page_size": page_size }))
+            .send()
+            .await
+            .map_err(|e| format!("bill list request failed: {e}"))?;
+        Self::check_auth_and_status(resp.status() == reqwest::StatusCode::UNAUTHORIZED, resp.status())
+            .await?;
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("decode bill list: {e}"))?;
+        Self::unwrap_business_data(v)
+    }
+
+    /// 多模态调用统计（图片/视频等，参数为 startDate/endDate）
+    pub async fn fetch_modality_usage(
+        &self,
+        start_date: &str,
+        end_date: &str,
+        token: &str,
+    ) -> Result<Value, String> {
+        let resp = self
+            .http
+            .get(format!("{SSY_API_BASE}/modelrouter/modalities/userusage"))
+            .query(&[("startDate", start_date), ("endDate", end_date)])
+            .header("x-token", token)
+            .send()
+            .await
+            .map_err(|e| format!("modality usage request failed: {e}"))?;
+        Self::check_auth_and_status(resp.status() == reqwest::StatusCode::UNAUTHORIZED, resp.status())
+            .await?;
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("decode modality usage: {e}"))?;
+        Self::unwrap_business_data(v)
+    }
+
+    async fn check_auth_and_status(
+        unauthorized: bool,
+        status: reqwest::StatusCode,
+    ) -> Result<(), String> {
+        if unauthorized {
+            return Err("401 token invalid".to_string());
+        }
+        if !status.is_success() {
+            return Err(format!("HTTP {status}"));
+        }
+        Ok(())
+    }
+
+    /// 上游通用响应解包：code != 0 视为失败；成功返回 data 节点
+    fn unwrap_business_data(v: Value) -> Result<Value, String> {
+        let biz_code = v.get("code").and_then(Value::as_i64).unwrap_or(0);
+        if biz_code != 0 {
+            return Err(format!(
+                "upstream error: {}",
+                v.pointer("/msg")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown error")
+            ));
+        }
+        Ok(v.get("data").cloned().unwrap_or(v))
+    }
+
     /// 异步探测创作者角色：marketListings 非空即创作者。失败按非创作者处理。
     pub async fn detect_creator_role(&self, api_key: &str) -> bool {
         let Ok(resp) = self

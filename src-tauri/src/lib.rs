@@ -1614,6 +1614,8 @@ pub fn run() {
             commands::analytics_track,
             commands::analytics_install_id,
             commands::shengsuanyun_user_usage,
+            commands::shengsuanyun_bill_list,
+            commands::shengsuanyun_modality_usage,
             commands::shengsuanyun_start_login,
             commands::shengsuanyun_bind_account,
             commands::shengsuanyun_bind_all_apps,

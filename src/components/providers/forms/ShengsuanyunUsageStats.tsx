@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   shengsuanyunApi,
   type UserUsageResponse,
+  type ModalityUsageResponse,
 } from "@/lib/api/shengsuanyun";
 
 const AMOUNT_DIVISOR = 10_000_000; // 1e-7 元
@@ -33,6 +34,7 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<13 | 29>(13);
   const [data, setData] = useState<UserUsageResponse | null>(null);
+  const [modalities, setModalities] = useState<ModalityUsageResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +42,14 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
     setLoading(true);
     setError(null);
     try {
-      setData(await shengsuanyunApi.getUserUsage(daysAgo(r), daysAgo(0)));
+      const [usage, mods] = await Promise.all([
+        shengsuanyunApi.getUserUsage(daysAgo(r), daysAgo(0)),
+        shengsuanyunApi
+          .getModalityUsage(daysAgo(r), daysAgo(0))
+          .catch(() => null),
+      ]);
+      setData(usage);
+      setModalities(mods);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -192,9 +201,36 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
               </tbody>
             </table>
           )}
+
+          {/* 多模态（图片/视频等）消费 */}
+          {(modalities?.usages?.length ?? 0) > 0 && (
+            <div className="mt-4 border-t border-border/40 pt-3">
+              <div className="mb-2 text-xs font-medium text-muted-foreground">
+                {t("shengsuanyun.modalityUsage", {
+                  defaultValue: "多模态调用（图片/视频）",
+                })}
+              </div>
+              <table className="w-full text-xs">
+                <tbody>
+                  {modalities!.usages.map((u) =>
+                    u.details.map((d) => (
+                      <tr key={`${u.date}-${d.model}`}>
+                        <td className="py-1 pr-2 tabular-nums text-muted-foreground">
+                          {u.date.slice(0, 10)}
+                        </td>
+                        <td className="py-1 pr-2">{d.model}</td>
+                        <td className="py-1 text-right tabular-nums">
+                          ¥{(d.total_amount / 10_000_000).toFixed(4)}
+                        </td>
+                      </tr>
+                    )),
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>
   );
-
 }

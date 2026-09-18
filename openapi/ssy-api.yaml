@@ -281,6 +281,36 @@ paths:
                       data:
                         $ref: "#/components/schemas/CallLogData"
 
+  /token/list:
+    get:
+      operationId: listAccountTokens
+      summary: 账号下多 Key 列表
+      description: |
+        必须用 jwt_token（api_key 返回 code 20003）。
+        - `data` 直接是数组（兼容层保留 data.list / data.items / data.data 兜底）
+        - `MaxQuota` / `ConsumedAmount` 单位 1e-4 元；**`MaxQuota == 0` 表示无上限**
+          （不是额度为 0；不可用 `!= 0` 判断字段存在）
+        - `Token` 字段是**完整明文 Key**：SDK 只在用户显式选择时按需读取，
+          列表接口只回脱敏元数据——不落库、不写日志、不整表下发前端
+        - `SupportedModels` 是 JSON 字符串（也可能是数组），解析失败按空集合处理
+      servers:
+        - url: https://api.shengsuanyun.com
+      responses:
+        "200":
+          description: Key 列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        description: 实测 data 直接为数组
+                        items:
+                          $ref: "#/components/schemas/AccountToken"
+
   /userorder/billlist:
     post:
       operationId: listBills
@@ -347,7 +377,7 @@ paths:
       summary: 创作者市场 listings（创作者角色探测）
       description: |
         普通用户也可 200 + 空 `items`；仅当 `items` 非空才视为创作者，
-        不能以 HTTP 状态码单独判定。
+        不能以 HTTP 状态码单独判定。实测 `x-token: <api_key>` 亦可调用。
       servers:
         - url: https://loomloom.shengsuanyun.com
       parameters:
@@ -417,6 +447,9 @@ components:
         jwt_token:
           type: string
           description: 用户身份 JWT（x-token，用于账户类端点）
+        expires_in:
+          type: number
+          description: JWT 有效期（秒）；实测单次取样 ≈593400s ≈ 6.9 天，续期路径未验证
 
     Wallet:
       type: object
@@ -563,6 +596,32 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Bill"
+
+    AccountToken:
+      type: object
+      description: |
+        数字与字符串混用，全部柔性解析。`MaxQuota == 0` 表示无上限。
+        `Token` 为完整明文 Key —— 仅在用户显式选择时按需读取，禁止落库/写日志/下发列表。
+      properties:
+        ID: { type: integer }
+        Name: { type: string }
+        Desc: { type: string, nullable: true }
+        IsDefault: { type: boolean }
+        IsBanned: { type: boolean }
+        IsExpired: { type: boolean }
+        MaxQuota:
+          $ref: "#/components/schemas/AmountT1e4"
+        ConsumedAmount:
+          $ref: "#/components/schemas/AmountT1e4"
+        CreatedAt: { type: string }
+        ExpiresAt: { type: string, nullable: true }
+        SupportedModels:
+          type: string
+          description: JSON 字符串（也可能是数组），解析失败按空集合处理
+        Token:
+          type: string
+          writeOnly: true
+          description: 完整明文 Key（见安全说明；列表接口不回传）
 
     LoomBalance:
       type: object

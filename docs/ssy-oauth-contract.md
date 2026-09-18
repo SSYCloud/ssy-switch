@@ -109,7 +109,12 @@ x-token: <jwt_token>          # 必须用 jwt_token
 
 - [x] `/auth` 支持并回传 `state`（2026-09-16 实测）
 - [ ] `/auth/keys` 在 loopback callback 下的真实响应结构与错误码
-- [ ] `Wallet.Assets` 的精确单位与币种
+- [x] `Wallet.Assets` 的精确单位与币种（2026-09-18 交叉验证：billlist 中
+      `Asset=100000` ↔ 实际充值 ¥10、`Balance=299591` ↔ `/api/v1/balance`
+      `account_balance_cny=29.9591`，三者同口径确认为 **1e-4 元、CNY**；
+      官方 balance-api 文档亦定义 `*_cny` 字段单位为元）
+- [x] 官方余额接口 `GET /api/v1/balance`（BearerKey，单位元，普通/企业网关自动区分）
+      —— 见 `openapi/ssy-api.yaml`（2026-09-18，lean.shengsuanyun.com balance-api 页）
 - [x] `/user/info` 的用户标识字段：`data.ID`（**数字**，实测 62890）。
       客户端已按数字/字符串双兼容解析（`pick_id_str`），此前 `as_str` 静默取空串会误删其它账号
 - [ ] `jwt_token` 过期后的续期路径（是否可用 `api_key` 换新 `jwt_token`）

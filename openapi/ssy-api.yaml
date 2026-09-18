@@ -122,6 +122,26 @@ paths:
                 type: string
                 description: SSE 流式 chunk
 
+  /api/v1/balance:
+    get:
+      operationId: getGatewayBalance
+      summary: 网关余额（按 API Key 查询，官方文档化端点）
+      description: |
+        查询当前 API Key 对应的普通账户余额或企业项目预算，系统按 Key 类型
+        自动返回对应结构（`gateway_type` 区分）。金额字段**已为元**，无需换算。
+        只需 Bearer API Key——手动配置 Key 的用户（未走 OAuth）也可查询。
+      security:
+        - BearerKey: []
+      servers:
+        - url: https://router.shengsuanyun.com
+      responses:
+        "200":
+          description: 余额（结构随 gateway_type 不同）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayBalance"
+
   /auth/keys:
     post:
       operationId: exchangeCode
@@ -569,6 +589,39 @@ components:
           items: { type: object }
         totalCount:
           type: integer
+  GatewayBalance:
+    type: object
+    required: [success, data]
+    properties:
+      success:
+        type: boolean
+      data:
+        type: object
+        required: [gateway_type, account_balance_cny]
+        properties:
+          gateway_type:
+            type: string
+            enum: [common, enterprise]
+            description: 普通网关 / 企业网关（企业结构字段不同）
+          account_balance_cny:
+            type: number
+            description: 账户总余额（元），不含业务专属代金券与授信额度
+          voucher_balance_cny:
+            type: number
+            description: 通用代金券余额（元）
+          gateway_voucher_balance_cny:
+            type: number
+            description: Gateway 专属代金券余额（元）
+          cash_balance_cny:
+            type: number
+            description: 充值形成的人民币余额（元）
+          locked_balance_cny:
+            type: number
+            description: 尚未最终扣除的待扣/预扣金额（元）
+          credit_limit_cny:
+            type: number
+            description: 授信额度（元）
+
   ModelCatalog:
     type: object
     required: [data]

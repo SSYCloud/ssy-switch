@@ -398,7 +398,10 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
               variant="outline"
               size="sm"
               aria-label={t("shengsuanyun.usageStats", { defaultValue: "调用统计" })}
-              onClick={() => setStatsOpen((v) => !v)}
+              onClick={() => {
+                setStatsOpen((v) => !v);
+                void analyticsApi.track("usage_stats_opened").catch(() => {});
+              }}
             >
               <BarChart3 className="h-4 w-4" />
             </Button>

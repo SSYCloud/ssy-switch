@@ -809,7 +809,7 @@ impl Database {
             provider.icon_color = Some(seed.icon_color.to_string());
             provider.sort_index = Some(0);
             provider.created_at = Some(now_ms);
-            provider.meta = Some(crate::shengsuanyun::models::default_usage_script_meta());
+            provider.meta = Some(crate::shengsuanyun::usage_script::default_usage_script_meta());
 
             self.save_provider(app_type_str, &provider)?;
             inserted += 1;
@@ -1013,7 +1013,7 @@ mod shengsuanyun_seed_tests {
         let providers = db.get_all_providers("claude").unwrap();
         let ssy = providers.get("shengsuanyun").expect("seeded card");
         assert_eq!(ssy.sort_index, Some(0));
-        assert!(crate::shengsuanyun::models::has_usage_script(ssy));
+        assert!(crate::shengsuanyun::usage_script::has_usage_script(ssy));
         assert!(ssy
             .settings_config
             .pointer("/env/ANTHROPIC_BASE_URL")

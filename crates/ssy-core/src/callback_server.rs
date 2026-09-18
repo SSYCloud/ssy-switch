@@ -1,19 +1,34 @@
 //! OAuth loopback 回调服务器。
 //!
-//! 独立于本地代理：应用启动登录时在 `127.0.0.1:0` 绑定随机端口，
+//! 独立于宿主的任何 HTTP 服务：登录时在 `127.0.0.1:0` 绑定随机端口，
 //! 只注册 `GET /auth/shengsuanyun/callback`。不绑定非回环地址、不开 CORS。
+//! 泛型 `F: OAuthFlow` —— 宿主把 [`crate::AuthManager`](crate::AuthManager) 包进 Arc 即可。
 
-use super::auth_manager::ShengsuanyunAuthManager;
+use crate::models::OAuthCompletePayload;
 use axum::extract::{Query, State};
 use axum::response::Html;
 use axum::routing::get;
 use axum::Router;
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
-type HandlerState = (Arc<ShengsuanyunAuthManager>, u16);
+/// 回调处理能力（[`crate::AuthManager`](crate::AuthManager) 已实现）。
+pub trait OAuthFlow: Send + Sync + 'static {
+    fn complete_login(
+        &self,
+        code: &str,
+        state: &str,
+        callback_port: u16,
+    ) -> impl Future<Output = Result<OAuthCompletePayload, String>> + Send;
+    fn notify_login_failed(&self, session_id: &str, reason: &str);
+    /// 回调处理结果分类（宿主可做埋点）：ok / invalid_state / token_invalid / upstream_error
+    fn login_callback(&self, result_class: &str);
+}
+
+type HandlerState<F> = (Arc<F>, u16);
 
 pub struct CallbackServer {
     pub port: u16,
@@ -22,7 +37,10 @@ pub struct CallbackServer {
 
 impl CallbackServer {
     /// 在 127.0.0.1 随机端口启动回调服务器，返回句柄（含实际端口）。
-    pub async fn start(manager: Arc<ShengsuanyunAuthManager>) -> Result<Self, String> {
+    pub async fn start<F>(flow: Arc<F>) -> Result<Self, String>
+    where
+        F: OAuthFlow,
+    {
         let addr = SocketAddr::from(([127, 0, 0, 1], 0));
         let listener = tokio::net::TcpListener::bind(addr)
             .await
@@ -34,7 +52,7 @@ impl CallbackServer {
 
         let app = Router::new()
             .route("/auth/shengsuanyun/callback", get(handle_callback))
-            .with_state((manager, port));
+            .with_state((flow, port));
 
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
@@ -54,23 +72,24 @@ impl CallbackServer {
     }
 }
 
-async fn handle_callback(
-    State((manager, port)): State<HandlerState>,
+async fn handle_callback<F>(
+    State((flow, port)): State<HandlerState<F>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Html<String> {
+) -> Html<String>
+where
+    F: OAuthFlow,
+{
     let (code, state) = match (params.get("code"), params.get("state")) {
         (Some(c), Some(s)) if !c.is_empty() && !s.is_empty() => (c.clone(), s.clone()),
-        _ => return Html(error_page("缺少授权参数，请返回 SSY-Switch 重新登录。")),
+        _ => {
+            flow.login_callback("missing_params");
+            return Html(error_page("缺少授权参数，请返回 SSY-Switch 重新登录。"));
+        }
     };
 
-    let db = manager.db_handle();
-    match manager.complete_login(&code, &state, port).await {
+    match flow.complete_login(&code, &state, port).await {
         Ok(_) => {
-            crate::analytics::track(
-                &db,
-                "login_callback",
-                &serde_json::json!({ "result": "ok" }),
-            );
+            flow.login_callback("ok");
             Html(success_page())
         }
         Err(e) => {
@@ -81,11 +100,7 @@ async fn handle_callback(
             } else {
                 "upstream_error"
             };
-            crate::analytics::track(
-                &db,
-                "login_callback",
-                &serde_json::json!({ "result": "failed", "reason_class": class }),
-            );
+            flow.login_callback(class);
             Html(error_page(&format!("登录失败：{e}")))
         }
     }

@@ -4,22 +4,26 @@
 //! - 所有返回 DTO 均为脱敏数据（无 API Key / code / state）
 //! - OAuth 结果通过 `shengsuanyun-oauth-complete` / `shengsuanyun-oauth-failed` 事件推送
 
-use crate::shengsuanyun::auth_manager::ShengsuanyunAuthManager;
-use crate::shengsuanyun::callback_server::CallbackServer;
-use crate::shengsuanyun::models::*;
+use crate::shengsuanyun::{
+    ShengsuanyunAccountView, ShengsuanyunAuthManager, ShengsuanyunBindingRow,
+};
+use ssy_core::callback_server::CallbackServer;
+use ssy_core::models::*;
 use std::sync::Arc;
 use tauri::State;
 
 pub struct ShengsuanyunState {
     pub manager: Arc<ShengsuanyunAuthManager>,
+    pub db: Arc<crate::database::Database>,
     /// 活跃的回调服务器（同一时刻至多一个登录流程）
     pub active_callback: tokio::sync::Mutex<Option<CallbackServer>>,
 }
 
 impl ShengsuanyunState {
-    pub fn new(manager: Arc<ShengsuanyunAuthManager>) -> Self {
+    pub fn new(manager: Arc<ShengsuanyunAuthManager>, db: Arc<crate::database::Database>) -> Self {
         Self {
             manager,
+            db,
             active_callback: tokio::sync::Mutex::new(None),
         }
     }
@@ -78,7 +82,7 @@ pub async fn shengsuanyun_get_status(
     app_type: String,
     provider_id: String,
 ) -> Result<Option<ShengsuanyunAccountView>, String> {
-    let db = state.manager.db_handle();
+    let db = state.db.clone();
     let Some(binding) = db
         .list_shengsuanyun_bindings()?
         .into_iter()
@@ -166,15 +170,9 @@ pub fn bind_account_internal(
     overwrite: bool,
 ) -> Result<ShengsuanyunBindResult, String> {
     {
-        let creds =
-            crate::shengsuanyun::credential_store::load_credentials(&app_state.db, account_id)?;
+        let (api_key, _) = app_state.db.load_shengsuanyun_credentials(account_id)?;
         run_bind(
-            app_state,
-            app_type,
-            account_id,
-            &creds.api_key,
-            activate,
-            overwrite,
+            app_state, app_type, account_id, &api_key, activate, overwrite,
         )
     }
 }
@@ -273,14 +271,33 @@ fn resolve_token_plaintext(
     account_id: &str,
     key_id: i64,
 ) -> Option<String> {
-    let creds =
-        crate::shengsuanyun::credential_store::load_credentials(&app_state.db, account_id).ok()?;
-    let client = crate::shengsuanyun::client::SsyClient::new();
-    let tokens = tauri::async_runtime::block_on(client.list_tokens(creds.identity_token())).ok()?;
+    let creds = app_state
+        .db
+        .load_shengsuanyun_credentials(account_id)
+        .ok()?;
+    let client = ssy_core::client::SsyClient::new();
+    let identity = if creds.1.is_empty() {
+        &creds.0
+    } else {
+        &creds.1
+    };
+    let tokens = tauri::async_runtime::block_on(client.list_tokens(identity)).ok()?;
     tokens
         .into_iter()
         .find(|t| t.id == key_id && !t.token.is_empty())
         .map(|t| t.token)
+}
+
+/// 绑定视图（下发前端；不含任何凭据）
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShengsuanyunBindingView {
+    pub app_type: String,
+    pub provider_id: String,
+    pub account_id: String,
+    pub credential_source: String,
+    pub key_id: Option<i64>,
+    pub updated_at: i64,
 }
 
 fn binding_view(row: ShengsuanyunBindingRow) -> ShengsuanyunBindingView {
@@ -320,7 +337,7 @@ pub async fn shengsuanyun_get_binding(
     app_type: String,
     provider_id: String,
 ) -> Result<Option<ShengsuanyunBindingView>, String> {
-    let db = state.manager.db_handle();
+    let db = state.db.clone();
     Ok(db
         .get_shengsuanyun_binding(&app_type, &provider_id)?
         .map(binding_view))
@@ -337,7 +354,7 @@ pub async fn shengsuanyun_set_binding_key(
     account_id: String,
     key_id: Option<i64>,
 ) -> Result<bool, String> {
-    let db = state.manager.db_handle();
+    let db = state.db.clone();
     let now = chrono::Utc::now().timestamp();
     if db.set_shengsuanyun_binding_key(&app_type, &provider_id, &account_id, key_id, now)? {
         return Ok(true);
@@ -586,7 +603,7 @@ fn new_shengsuanyun_provider(
         icon: Some("shengsuanyun".into()),
         icon_color: None,
         in_failover_queue: false,
-        meta: Some(crate::shengsuanyun::models::default_usage_script_meta()),
+        meta: Some(crate::shengsuanyun::usage_script::default_usage_script_meta()),
     }
 }
 

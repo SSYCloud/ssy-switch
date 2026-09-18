@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/ssy-core"]
+
+# 继承自 src-tauri（workspace 根才生效）
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+# 使用 unwind 以便 panic hook 能捕获 backtrace（abort 会直接终止无法捕获）
+panic = "unwind"
+strip = "symbols"
+

@@ -1292,7 +1292,7 @@ pub fn run() {
                             Some(mut m) => {
                                 if needs_full_backfill {
                                     m.usage_script = Some(
-                                        crate::shengsuanyun::models::default_usage_script_meta()
+                                        crate::shengsuanyun::usage_script::default_usage_script_meta()
                                             .usage_script
                                             .expect("set"),
                                     );
@@ -1301,7 +1301,7 @@ pub fn run() {
                                 }
                                 m
                             }
-                            None => crate::shengsuanyun::models::default_usage_script_meta(),
+                            None => crate::shengsuanyun::usage_script::default_usage_script_meta(),
                         });
                         match app_state.db.save_provider(app_type, &updated) {
                             Ok(_) => {
@@ -1341,9 +1341,16 @@ pub fn run() {
                 {
                     use commands::ShengsuanyunState;
                     use shengsuanyun::ShengsuanyunAuthManager;
-                    let mgr = Arc::new(ShengsuanyunAuthManager::new(app.state::<AppState>().db.clone()));
-                    mgr.set_app_handle(app.handle().clone());
-                    app.manage(ShengsuanyunState::new(mgr));
+                    let db = app.state::<AppState>().db.clone();
+                    let mgr = Arc::new(ShengsuanyunAuthManager::new(
+                        shengsuanyun::sqlite_stores::SqliteCredentialStore(db.clone()),
+                        shengsuanyun::sqlite_stores::SqliteAccountStore(db.clone()),
+                        shengsuanyun::events::TauriEvents {
+                            app: app.handle().clone(),
+                            db: db.clone(),
+                        },
+                    ));
+                    app.manage(ShengsuanyunState::new(mgr, db.clone()));
 
                     // SSY-Switch 数据补偿：旧版本登录产生的账号 uid 恒为空（上游 data.ID
                     // 是数字，被 as_str 解析成空串）。用已存凭据重查 /user/info 回填 uid，

@@ -6,7 +6,7 @@
 //! - `GET /token/list` 用 `x-token` 头列出该账号名下全部 Token（含明文，需按需取用）
 //! - 创作者角色通过 `/creators/me/marketListings` 异步探测
 
-use super::models::*;
+use crate::models::*;
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
@@ -31,6 +31,12 @@ impl SsyCredentials {
 
 pub struct SsyClient {
     http: Client,
+}
+
+impl Default for SsyClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SsyClient {

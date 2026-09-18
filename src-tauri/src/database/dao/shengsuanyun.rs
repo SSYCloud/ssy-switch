@@ -4,7 +4,19 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::shengsuanyun::models::{ShengsuanyunAccountRow, ShengsuanyunBindingRow, SsyUserInfo};
+use ssy_core::models::{AccountRecord as ShengsuanyunAccountRow, SsyUserInfo};
+
+/// 充值/账单之外：绑定记录（壳层数据结构，含用户选中的上游 Key ID）
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ShengsuanyunBindingRow {
+    pub app_type: String,
+    pub provider_id: String,
+    pub account_id: String,
+    pub credential_source: String,
+    pub key_id: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
 use rusqlite::params;
 
 impl Database {
@@ -343,7 +355,7 @@ fn map_binding_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShengsuanyunBind
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shengsuanyun::models::SsyUserInfo;
+    use ssy_core::models::SsyUserInfo;
 
     fn info(uid: &str, name: &str) -> SsyUserInfo {
         SsyUserInfo {

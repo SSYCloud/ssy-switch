@@ -1,15 +1,24 @@
-//! 胜算云（Shengsuanyun）OAuth 与账号管理模块。
+//! 胜算云模块（SSY-Switch 壳层适配）。
 //!
-//! Authorization Code + loopback HTTP 回调模式（参考 LoomLoom webapp 的 auth_ssy.go），
-//! 与上游 CC Switch 现有三家 OAuth（Device Code 模式）相互独立。
+//! 核心逻辑在 `ssy-core` crate（workspace 成员）；本模块提供：
+//! - SQLite 存储适配（实现 SDK 的 CredentialStore / AccountStore）
+//! - Tauri 事件适配（实现 SDK 的 LoginEvents）
+//! - 应用专属：默认用量脚本、Provider 绑定、Grok Build 配置
 
-pub mod auth_manager;
-pub mod callback_server;
-pub mod client;
-pub mod credential_store;
-// SSY-Switch: Grok CLI 是原生 `[models]` 结构，与 Codex 的 `[model_providers]` 不同，
-// 单独一个模块承载它的模板与 Key 读写（唯一转换入口）。
+pub mod events;
 pub mod grok_build;
-pub mod models;
+pub mod sqlite_stores;
+pub mod usage_script;
 
-pub use auth_manager::ShengsuanyunAuthManager;
+// 兼容旧引用路径：`shengsuanyun::client::SsyClient`
+pub use crate::database::dao::shengsuanyun::ShengsuanyunBindingRow;
+pub use ssy_core::models::AccountView as ShengsuanyunAccountView;
+
+pub use ssy_core::AuthManager;
+
+/// 壳层使用的具体管理器类型
+pub type ShengsuanyunAuthManager = AuthManager<
+    sqlite_stores::SqliteCredentialStore,
+    sqlite_stores::SqliteAccountStore,
+    events::TauriEvents,
+>;

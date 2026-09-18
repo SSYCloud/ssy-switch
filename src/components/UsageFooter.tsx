@@ -9,6 +9,10 @@ import type { QuotaTier } from "@/types/subscription";
 import { isAdditiveAppId } from "@/config/appConfig";
 import { settingsApi } from "@/lib/api/settings";
 import { SSY_RECHARGE_URL } from "@/config/constants";
+import {
+  markRechargeOpened,
+  shouldRefreshOnFocus,
+} from "@/lib/rechargeTracker";
 
 interface UsageFooterProps {
   provider: Provider;
@@ -44,6 +48,7 @@ const RechargeButton: React.FC = () => {
     <button
       onClick={(e) => {
         e.stopPropagation();
+        markRechargeOpened();
         void settingsApi.openExternal(SSY_RECHARGE_URL);
       }}
       className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors flex-shrink-0"
@@ -111,6 +116,21 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
     enabled: usageEnabled,
     autoQueryInterval,
   });
+
+  // 充值回来自动刷新：从浏览器切回应用时立即拉最新余额（不用等 5 分钟轮询）
+  const lastFocusRefreshRef = React.useRef(0);
+  React.useEffect(() => {
+    if (!isSsy) return;
+    const onFocus = () => {
+      const now = Date.now();
+      if (!shouldRefreshOnFocus(now)) return;
+      if (now - lastFocusRefreshRef.current < 20_000) return;
+      lastFocusRefreshRef.current = now;
+      void refetch();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [isSsy, refetch]);
 
   // 🆕 定期更新当前时间，用于刷新相对时间显示
   const [now, setNow] = React.useState(Date.now());

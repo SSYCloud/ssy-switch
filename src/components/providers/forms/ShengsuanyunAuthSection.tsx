@@ -14,6 +14,10 @@ import {
 import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
 import { settingsApi } from "@/lib/api/settings";
 import { SSY_RECHARGE_URL } from "@/config/constants";
+import {
+  markRechargeOpened,
+  shouldRefreshOnFocus,
+} from "@/lib/rechargeTracker";
 
 type Phase = "idle" | "pending" | "error";
 
@@ -44,18 +48,18 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
   const bindAppRef = useRef<string | null>(targetApp ?? null);
 
-  const rechargeOpenedAtRef = useRef<number>(0);
   const lastBalanceRefreshRef = useRef<number>(0);
 
   // 应用重新聚焦时自动刷新余额（充值回来即看到账）：
   // 仅在曾打开过充值页、且距上次刷新 > 20s 时触发，避免高频请求
   useEffect(() => {
     const onFocus = () => {
-      if (rechargeOpenedAtRef.current === 0) return;
-      if (Date.now() - lastBalanceRefreshRef.current < 20_000) return;
+      const now = Date.now();
+      if (!shouldRefreshOnFocus(now)) return;
+      if (now - lastBalanceRefreshRef.current < 20_000) return;
       const account = accountsRef.current[0];
       if (!account) return;
-      lastBalanceRefreshRef.current = Date.now();
+      lastBalanceRefreshRef.current = now;
       void refreshBalanceSilent(account.id);
     };
     window.addEventListener("focus", onFocus);
@@ -221,8 +225,8 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   /// 打开充值页（系统浏览器），记录时间供聚焦后刷新判断
   const openRecharge = async () => {
     try {
+      markRechargeOpened();
       await settingsApi.openExternal(SSY_RECHARGE_URL);
-      rechargeOpenedAtRef.current = Date.now();
     } catch (e) {
       setError(String(e));
     }

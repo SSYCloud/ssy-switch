@@ -1,5 +1,5 @@
 import React from "react";
-import { RefreshCw, AlertCircle, Clock } from "lucide-react";
+import { RefreshCw, AlertCircle, Clock, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { type AppId } from "@/lib/api";
 import { useUsageQuery } from "@/lib/query/queries";
@@ -7,6 +7,8 @@ import { UsageData, Provider } from "@/types";
 import { TierBadge } from "@/components/SubscriptionQuotaFooter";
 import type { QuotaTier } from "@/types/subscription";
 import { isAdditiveAppId } from "@/config/appConfig";
+import { settingsApi } from "@/lib/api/settings";
+import { SSY_RECHARGE_URL } from "@/config/constants";
 
 interface UsageFooterProps {
   provider: Provider;
@@ -17,6 +19,41 @@ interface UsageFooterProps {
   isInConfig?: boolean; // OpenCode: 是否已添加到配置
   inline?: boolean; // 是否内联显示（在按钮左侧）
 }
+
+
+/// 胜算云卡片识别（与 UsageScriptModal 的判断一致）：命中才展示余额旁的充值入口
+function isShengsuanyunProvider(provider: Provider | undefined): boolean {
+  if (!provider) return false;
+  const id = provider.id.toLowerCase();
+  const icon = provider.icon?.toLowerCase();
+  const url = provider.websiteUrl?.toLowerCase() || "";
+  const cfg = JSON.stringify(provider.settingsConfig ?? {});
+  return (
+    id === "shengsuanyun" ||
+    id.startsWith("ssy-") ||
+    icon === "shengsuanyun" ||
+    url.includes("shengsuanyun.com") ||
+    cfg.includes("shengsuanyun.com")
+  );
+}
+
+/// 充值小按钮：外跳浏览器打开胜算云充值页（与认证中心的充值入口同 URL）
+const RechargeButton: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        void settingsApi.openExternal(SSY_RECHARGE_URL);
+      }}
+      className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors flex-shrink-0"
+      title={t("shengsuanyun.recharge", { defaultValue: "充值" })}
+    >
+      <Wallet size={11} />
+      {t("shengsuanyun.recharge", { defaultValue: "充值" })}
+    </button>
+  );
+};
 
 /** UsageData → QuotaTier 转换（Token Plan 使用） */
 function toQuotaTier(data: UsageData): QuotaTier {
@@ -53,6 +90,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   inline = false,
 }) => {
   const { t } = useTranslation();
+  const isSsy = isShengsuanyunProvider(provider);
   const isTokenPlan =
     provider.meta?.usage_script?.templateType === "token_plan";
 
@@ -260,6 +298,9 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
               {firstUsage.unit}
             </span>
           )}
+
+          {/* 胜算云：余额旁快捷充值 */}
+          {isSsy && <RechargeButton />}
 
           {/* 扩展字段 extra */}
           {firstUsage.extra && (

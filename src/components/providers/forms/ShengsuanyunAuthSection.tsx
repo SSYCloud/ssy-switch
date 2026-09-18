@@ -13,11 +13,9 @@ import {
 } from "@/lib/api/shengsuanyun";
 import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
 import { settingsApi } from "@/lib/api/settings";
+import { SSY_RECHARGE_URL } from "@/config/constants";
 
 type Phase = "idle" | "pending" | "error";
-
-/// 胜算云充值页（P0 外跳方案；URL 不携带任何凭据，仅归因参数）
-const SSY_RECHARGE_URL = "https://console.shengsuanyun.com/user/recharge?from=ssy_switch";
 
 /// 402 / 余额不足错误特征（用于"前往充值"引导）
 function isInsufficientBalance(error: unknown): boolean {

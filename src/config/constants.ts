@@ -34,3 +34,7 @@ export const TEMPLATE_TYPES = {
 } as const;
 
 export type TemplateType = (typeof TEMPLATE_TYPES)[keyof typeof TEMPLATE_TYPES];
+
+/// 胜算云充值页（外跳浏览器，仅归因参数，不带任何凭据）
+export const SSY_RECHARGE_URL =
+  "https://console.shengsuanyun.com/user/recharge?from=ssy_switch";

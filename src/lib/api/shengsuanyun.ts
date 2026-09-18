@@ -11,6 +11,8 @@ export interface ShengsuanyunAccount {
   isCreator: boolean;
   /** 余额（元），null 表示尚未获取 */
   balanceYuan: number | null;
+  /** 体验券（元），null 表示尚未获取 */
+  voucherYuan: number | null;
   balanceUpdatedAt: number | null;
   createdAt: number;
 }

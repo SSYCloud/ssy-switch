@@ -434,6 +434,8 @@ impl Database {
         Self::create_shengsuanyun_tables(conn)?;
         // SSY-Switch: 埋点事件队列表
         Self::create_analytics_table(conn)?;
+        // SSY-Switch: 体验券列（存量库补列）
+        Self::ensure_shengsuanyun_voucher_column(conn)?;
         Ok(())
     }
 
@@ -1616,6 +1618,7 @@ impl Database {
                 avatar_url TEXT NOT NULL DEFAULT '',
                 is_creator INTEGER NOT NULL DEFAULT 0,
                 balance_assets INTEGER,
+                voucher_assets INTEGER,
                 balance_updated_at INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
@@ -1720,6 +1723,19 @@ impl Database {
     }
 
     /// SSY-Switch: 埋点事件队列（本地缓存，批量上报；不上传任何敏感字段）
+    /// 存量库补列：shengsuanyun_accounts.voucher_assets（体验券余额缓存）
+    fn ensure_shengsuanyun_voucher_column(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "shengsuanyun_accounts")? {
+            Self::add_column_if_missing(
+                conn,
+                "shengsuanyun_accounts",
+                "voucher_assets",
+                "INTEGER",
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn create_analytics_table(conn: &Connection) -> Result<(), AppError> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS analytics_events (

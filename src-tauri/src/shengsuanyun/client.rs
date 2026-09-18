@@ -136,6 +136,12 @@ impl SsyClient {
                 .or_else(|| data.pointer("/wallet/assets"))
                 .map(flexible_f64)
                 .unwrap_or(0.0),
+            voucher_assets: data
+                .pointer("/Wallet/VoucherBalance")
+                .or_else(|| data.pointer("/Wallet/voucherBalance"))
+                .or_else(|| data.pointer("/wallet/voucherBalance"))
+                .map(flexible_f64)
+                .unwrap_or(0.0),
         })
     }
 

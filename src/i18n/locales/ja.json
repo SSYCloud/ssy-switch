@@ -1965,7 +1965,8 @@
     "fieldExtra": "• extra: String。自由記述の追加テキスト",
     "tip1": "• 変数 {{apiKey}} と {{baseUrl}} は自動で置換されます",
     "tip2": "• 抽出関数はサンドボックスで実行され、ES2020+ の構文を使えます",
-    "tip3": "• 全体を () で囲み、オブジェクトリテラル式にしてください"
+    "tip3": "• 全体を () で囲み、オブジェクトリテラル式にしてください",
+    "templateShengsuanyun": "勝算クラウド"
   },
   "dbUpgrade": {
     "title": "データベースのバージョンが新しすぎます",
@@ -3261,5 +3262,40 @@
     "expiredHint": "{{tool}}コマンドを実行してログインを更新してください",
     "queryFailed": "クエリに失敗しました",
     "refresh": "更新"
+  },
+  "shengsuanyun": {
+    "login": "勝算クラウドアカウントでログイン（Key のコピー不要）",
+    "pending": "認証ページをブラウザで開きました。ログインを完了してください…",
+    "cancel": "ログインをキャンセル",
+    "balance": "残高",
+    "refreshBalance": "残高を更新",
+    "relogin": "再ログイン",
+    "logout": "ログアウト",
+    "failed": "ログインに失敗しました",
+    "intentPrompt": "勝算クラウド Web からのログイン要求を受け取りました。ログインとバインドを開始しますか？",
+    "intentConfirm": "ログイン開始",
+    "intentCancel": "無視",
+    "bindConflict": "一部のアプリには手動設定の Key があるため、自動上書きしませんでした。プロバイダー設定で確認してからバインドしてください。",
+    "bindTo": "バインドして有効化:",
+    "bannerTitle": "勝算クラウドに接続、ワンクリックで利用開始",
+    "bannerBody": "API Key のコピーは不要{0}。ブラウザでログインすると自動的にバインド・有効化されます。",
+    "bannerCta": "勝算クラウドアカウントでログイン",
+    "recharge": "チャージ",
+    "goRecharge": "チャージページへ",
+    "insufficientBalance": "残高不足のためリクエストを完了できません",
+    "voucher": "体験クーポン",
+    "keyPicker": {
+      "balance": "残高",
+      "banned": "無効",
+      "defaultBadge": "デフォルト",
+      "empty": "利用可能な Key がありません",
+      "expired": "期限切れ",
+      "manage": "管理",
+      "saveHint": "保存すると選択が記憶されます",
+      "switchAccount": "アカウント切替",
+      "trigger": "Key を選択",
+      "unlimited": "無制限",
+      "used": "使用済み"
+    }
   }
 }

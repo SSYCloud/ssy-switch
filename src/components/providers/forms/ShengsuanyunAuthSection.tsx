@@ -335,6 +335,12 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
                   ? `¥${a.balanceYuan.toFixed(2)}`
                   : "—"}
               </span>
+              {a.voucherYuan != null && a.voucherYuan > 0 && (
+                <span className="ml-2">
+                  {t("shengsuanyun.voucher", { defaultValue: "体验券" })}:{" "}
+                  ¥{a.voucherYuan.toFixed(2)}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">

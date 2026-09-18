@@ -1966,7 +1966,8 @@
     "fieldExtra": "• extra: 字串，擴充欄位，可自由補充需要展示的文字",
     "tip1": "• 變數 {{apiKey}} 和 {{baseUrl}} 會自動替換",
     "tip2": "• extractor 函式在沙盒環境中執行，支援 ES2020+ 語法",
-    "tip3": "• 整個設定必須用 () 包覆，形成物件實字運算式"
+    "tip3": "• 整個設定必須用 () 包覆，形成物件實字運算式",
+    "templateShengsuanyun": "勝算雲"
   },
   "dbUpgrade": {
     "title": "資料庫版本過新",
@@ -3262,5 +3263,40 @@
     "expiredHint": "請執行 {{tool}} 命令重新整理登入",
     "queryFailed": "查詢失敗",
     "refresh": "重新整理"
+  },
+  "shengsuanyun": {
+    "login": "用勝算雲帳號登入（無需複製 Key）",
+    "pending": "已在瀏覽器開啟授權頁，請完成登入…",
+    "cancel": "取消登入",
+    "balance": "餘額",
+    "refreshBalance": "重新整理餘額",
+    "relogin": "重新登入",
+    "logout": "登出",
+    "failed": "登入失敗",
+    "intentPrompt": "收到來自勝算雲 Web 的登入請求，是否開始登入並綁定？",
+    "intentConfirm": "開始登入",
+    "intentCancel": "忽略",
+    "bindConflict": "部分應用已有手動配置的 Key，未自動覆蓋。請在供應商設定中確認後再綁定。",
+    "bindTo": "綁定並啟用:",
+    "bannerTitle": "連接勝算雲，一鍵登入即用",
+    "bannerBody": "無需複製 API Key{0}。瀏覽器登入勝算雲帳號後自動綁定並啟用。",
+    "bannerCta": "用勝算雲帳號登入",
+    "recharge": "儲值",
+    "goRecharge": "前往儲值",
+    "insufficientBalance": "餘額不足，無法完成請求",
+    "voucher": "體驗券",
+    "keyPicker": {
+      "balance": "餘額",
+      "banned": "已停用",
+      "defaultBadge": "預設",
+      "empty": "沒有可用的 Key",
+      "expired": "已過期",
+      "manage": "管理",
+      "saveHint": "儲存後將記住選擇",
+      "switchAccount": "切換帳號",
+      "trigger": "選擇 Key",
+      "unlimited": "無限制",
+      "used": "已使用"
+    }
   }
 }

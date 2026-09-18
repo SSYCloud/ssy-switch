@@ -16,6 +16,7 @@ impl Database {
         info: &SsyUserInfo,
         is_creator: bool,
         balance_assets: Option<f64>,
+        voucher_assets: Option<f64>,
         now: i64,
     ) -> Result<ShengsuanyunAccountRow, String> {
         let conn = lock_conn!(self.conn);
@@ -31,8 +32,8 @@ impl Database {
         }
         conn.execute(
             "INSERT OR REPLACE INTO shengsuanyun_accounts
-             (id, uid, display_name, email, avatar_url, is_creator, balance_assets, balance_updated_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+             (id, uid, display_name, email, avatar_url, is_creator, balance_assets, voucher_assets, balance_updated_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
             params![
                 id,
                 info.uid,
@@ -41,6 +42,7 @@ impl Database {
                 info.avatar_url,
                 is_creator as i64,
                 balance_assets,
+                voucher_assets,
                 balance_assets.map(|_| now),
                 now
             ],
@@ -54,6 +56,7 @@ impl Database {
             avatar_url: info.avatar_url.clone(),
             is_creator,
             balance_assets,
+            voucher_assets,
             balance_updated_at: balance_assets.map(|_| now),
             created_at: now,
             updated_at: now,
@@ -132,7 +135,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, uid, display_name, email, avatar_url, is_creator,
-                        balance_assets, balance_updated_at, created_at, updated_at
+                        balance_assets, voucher_assets, balance_updated_at, created_at, updated_at
                  FROM shengsuanyun_accounts ORDER BY created_at ASC",
             )
             .map_err(|e| e.to_string())?;
@@ -146,9 +149,10 @@ impl Database {
                     avatar_url: row.get(4)?,
                     is_creator: row.get::<_, i64>(5)? != 0,
                     balance_assets: row.get(6)?,
-                    balance_updated_at: row.get(7)?,
-                    created_at: row.get(8)?,
-                    updated_at: row.get(9)?,
+                    voucher_assets: row.get(7)?,
+                    balance_updated_at: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -164,7 +168,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, uid, display_name, email, avatar_url, is_creator,
-                        balance_assets, balance_updated_at, created_at, updated_at
+                        balance_assets, voucher_assets, balance_updated_at, created_at, updated_at
                  FROM shengsuanyun_accounts WHERE id = ?1",
             )
             .map_err(|e| e.to_string())?;
@@ -178,9 +182,10 @@ impl Database {
                     avatar_url: row.get(4)?,
                     is_creator: row.get::<_, i64>(5)? != 0,
                     balance_assets: row.get(6)?,
-                    balance_updated_at: row.get(7)?,
-                    created_at: row.get(8)?,
-                    updated_at: row.get(9)?,
+                    voucher_assets: row.get(7)?,
+                    balance_updated_at: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -195,14 +200,15 @@ impl Database {
         &self,
         id: &str,
         balance_assets: f64,
+        voucher_assets: f64,
         now: i64,
     ) -> Result<(), String> {
         let conn = lock_conn!(self.conn);
         conn.execute(
             "UPDATE shengsuanyun_accounts
-             SET balance_assets = ?2, balance_updated_at = ?3, updated_at = ?3
+             SET balance_assets = ?2, voucher_assets = ?3, balance_updated_at = ?4, updated_at = ?4
              WHERE id = ?1",
-            params![id, balance_assets, now],
+            params![id, balance_assets, voucher_assets, now],
         )
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -346,6 +352,7 @@ mod tests {
             email: "alice@example.com".into(),
             avatar_url: String::new(),
             wallet_assets: 235000.0,
+            voucher_assets: 0.0,
         }
     }
 
@@ -353,11 +360,25 @@ mod tests {
     fn upsert_replaces_same_uid() {
         let db = Database::memory().unwrap();
         let a = db
-            .upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, Some(1.0), 100)
+            .upsert_shengsuanyun_account(
+                "id-1",
+                &info("u1", "Alice"),
+                false,
+                Some(1.0),
+                Some(0.0),
+                100,
+            )
             .unwrap();
         assert_eq!(a.display_name, "Alice");
-        db.upsert_shengsuanyun_account("id-2", &info("u1", "Alice2"), false, Some(2.0), 200)
-            .unwrap();
+        db.upsert_shengsuanyun_account(
+            "id-2",
+            &info("u1", "Alice2"),
+            false,
+            Some(2.0),
+            Some(0.0),
+            200,
+        )
+        .unwrap();
         let accounts = db.list_shengsuanyun_accounts().unwrap();
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].id, "id-2");
@@ -367,7 +388,7 @@ mod tests {
     #[test]
     fn delete_removes_account_and_bindings() {
         let db = Database::memory().unwrap();
-        db.upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, None, 100)
+        db.upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, None, Some(0.0), 100)
             .unwrap();
         db.upsert_shengsuanyun_binding("claude", "p1", "id-1", "oauth", None, 100)
             .unwrap();
@@ -395,12 +416,13 @@ mod tests {
     #[test]
     fn balance_update_persists() {
         let db = Database::memory().unwrap();
-        db.upsert_shengsuanyun_account("id-1", &info("u1", "A"), false, None, 100)
+        db.upsert_shengsuanyun_account("id-1", &info("u1", "A"), false, None, Some(0.0), 100)
             .unwrap();
-        db.update_shengsuanyun_balance("id-1", 50000.0, 300)
+        db.update_shengsuanyun_balance("id-1", 50000.0, 0.0, 300)
             .unwrap();
         let row = db.get_shengsuanyun_account("id-1").unwrap().unwrap();
         assert_eq!(row.balance_assets, Some(50000.0));
+        assert_eq!(row.voucher_assets, Some(0.0));
     }
 
     #[test]
@@ -444,7 +466,7 @@ mod tests {
     fn account_id_is_stable_across_relogin() {
         let db = Database::memory().unwrap();
         let first = db
-            .upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, None, 100)
+            .upsert_shengsuanyun_account("id-1", &info("u1", "Alice"), false, None, Some(0.0), 100)
             .unwrap();
         assert_eq!(first.id, "id-1");
         // 重登前先反查复用同一 id
@@ -457,7 +479,7 @@ mod tests {
 
         let id = reused.unwrap_or_else(|| "id-2".to_string());
         assert_eq!(id, "id-1");
-        db.upsert_shengsuanyun_account(&id, &info("u1", "Alice2"), false, None, 200)
+        db.upsert_shengsuanyun_account(&id, &info("u1", "Alice2"), false, None, Some(0.0), 200)
             .unwrap();
         assert_eq!(db.list_shengsuanyun_accounts().unwrap().len(), 1);
         // 绑定与凭据都不应被级联删除
@@ -476,8 +498,15 @@ mod tests {
     #[test]
     fn legacy_empty_uid_account_is_backfilled_not_deleted() {
         let db = Database::memory().unwrap();
-        db.upsert_shengsuanyun_account("legacy", &info("", "user_jheayl"), false, None, 100)
-            .unwrap();
+        db.upsert_shengsuanyun_account(
+            "legacy",
+            &info("", "user_jheayl"),
+            false,
+            None,
+            Some(0.0),
+            100,
+        )
+        .unwrap();
         db.upsert_shengsuanyun_binding("claude", "p1", "legacy", "oauth", None, 100)
             .unwrap();
         db.save_shengsuanyun_credentials("legacy", "sk-old", "jwt-old")
@@ -505,9 +534,9 @@ mod tests {
     #[test]
     fn empty_uid_upsert_does_not_wipe_other_accounts() {
         let db = Database::memory().unwrap();
-        db.upsert_shengsuanyun_account("legacy-a", &info("", "A"), false, None, 100)
+        db.upsert_shengsuanyun_account("legacy-a", &info("", "A"), false, None, Some(0.0), 100)
             .unwrap();
-        db.upsert_shengsuanyun_account("legacy-b", &info("", "B"), false, None, 100)
+        db.upsert_shengsuanyun_account("legacy-b", &info("", "B"), false, None, Some(0.0), 100)
             .unwrap();
         assert_eq!(db.list_shengsuanyun_accounts().unwrap().len(), 2);
     }
@@ -516,9 +545,9 @@ mod tests {
     #[test]
     fn list_empty_uid_ids_returns_only_legacy_rows() {
         let db = Database::memory().unwrap();
-        db.upsert_shengsuanyun_account("legacy", &info("", "Legacy"), false, None, 100)
+        db.upsert_shengsuanyun_account("legacy", &info("", "Legacy"), false, None, Some(0.0), 100)
             .unwrap();
-        db.upsert_shengsuanyun_account("ok", &info("62890", "熊叔"), false, None, 100)
+        db.upsert_shengsuanyun_account("ok", &info("62890", "熊叔"), false, None, Some(0.0), 100)
             .unwrap();
         assert_eq!(
             db.list_empty_uid_shengsuanyun_account_ids().unwrap(),

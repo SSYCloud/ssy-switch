@@ -161,6 +161,7 @@ impl ShengsuanyunAuthManager {
             &info,
             is_creator,
             Some(info.wallet_assets),
+            Some(info.voucher_assets),
             now,
         )?;
         let view = account_view(&row);
@@ -201,8 +202,12 @@ impl ShengsuanyunAuthManager {
             .client
             .fetch_user_info(credentials.identity_token())
             .await?;
-        self.db
-            .update_shengsuanyun_balance(account_id, info.wallet_assets, now_ts())?;
+        self.db.update_shengsuanyun_balance(
+            account_id,
+            info.wallet_assets,
+            info.voucher_assets,
+            now_ts(),
+        )?;
         Ok(assets_to_yuan(info.wallet_assets))
     }
 

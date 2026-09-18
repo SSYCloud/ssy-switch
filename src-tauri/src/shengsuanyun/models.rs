@@ -22,6 +22,7 @@ pub struct ShengsuanyunAccountRow {
     pub avatar_url: String,
     pub is_creator: bool,
     pub balance_assets: Option<f64>,
+    pub voucher_assets: Option<f64>,
     pub balance_updated_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -64,6 +65,9 @@ pub struct SsyUserInfo {
     /// 钱包资产（上游原始单位，展示层才换算为元）
     #[serde(default)]
     pub wallet_assets: f64,
+    /// 体验券余额（上游原始单位，同 Assets 口径）
+    #[serde(default)]
+    pub voucher_assets: f64,
 }
 
 /// 登录会话启动结果（不含任何密钥）

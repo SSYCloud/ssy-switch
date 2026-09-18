@@ -12,6 +12,7 @@ import {
   type ShengsuanyunAccount,
 } from "@/lib/api/shengsuanyun";
 import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
+import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { settingsApi } from "@/lib/api/settings";
 import { SSY_RECHARGE_URL } from "@/config/constants";
 import {
@@ -94,16 +95,27 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
 
   useEffect(() => {
     void reload();
-    // 首页横幅点击：携带目标 app 直接开始登录（用户点击即确认）
-    const onLoginRequest = (ev: Event) => {
+    // 登录流程由全局桥发起（横幅/本面板/深链共用）：这里只跟进 pending 态
+    const onPending = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ sessionId: string }>).detail;
+      sessionIdRef.current = detail.sessionId;
+      setPhase("pending");
+      setError(null);
+    };
+    window.addEventListener("ssy-login-pending", onPending);
+    const onLoginRequestCompat = (ev: Event) => {
       const detail = (ev as CustomEvent<{ appId: string }>).detail;
       if (detail?.appId) bindAppRef.current = detail.appId;
-      void startLoginRef.current?.(detail?.appId);
+      void startLoginFlow(detail?.appId).catch((e) => {
+        setPhase("error");
+        setError(String(e));
+      });
     };
-    window.addEventListener("ssy-login-request", onLoginRequest);
+    window.addEventListener("ssy-login-request", onLoginRequestCompat);
     let offComplete: UnlistenFn | undefined;
     let offFailed: UnlistenFn | undefined;
     let offIntent: UnlistenFn | undefined;
+    let offConflict: UnlistenFn | undefined;
     let disposed = false;
 
     (async () => {
@@ -111,28 +123,15 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         setPhase("idle");
         setError(null);
         void reload();
-        // 自动绑定：有目标 app 时只绑该 app；无目标（认证中心直接登录）时三端全绑
-        void (async () => {
-          try {
-            const accounts = await shengsuanyunApi.listAccounts();
-            const latest = accounts[accounts.length - 1];
-            if (!latest) return;
-            const bindApp = bindAppRef.current;
-            const results = bindApp
-              ? [await shengsuanyunApi.bindAccount(bindApp, latest.id)]
-              : await shengsuanyunApi.bindAllApps(latest.id);
-            if (results.some((r) => r.status === "conflict")) {
-              setError(
-                t("shengsuanyun.bindConflict", {
-                  defaultValue:
-                    "部分应用已有手动配置的 Key，未自动覆盖。请在供应商设置中确认后再绑定。",
-                }),
-              );
-            }
-          } catch (e) {
-            setError(String(e));
-          }
-        })();
+        // 自动绑定由全局桥（shengsuanyunFlow）处理
+      });
+      offConflict = await listen("ssy-bind-conflict", () => {
+        setError(
+          t("shengsuanyun.bindConflict", {
+            defaultValue:
+              "部分应用已有手动配置的 Key，未自动覆盖。请在供应商设置中确认后再绑定。",
+          }),
+        );
       });
       offFailed = await listen<{ sessionId: string; reason: string }>(
         "shengsuanyun-oauth-failed",
@@ -149,6 +148,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         offComplete();
         offFailed();
         offIntent();
+        offConflict();
       }
     })();
 
@@ -157,13 +157,11 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       offComplete?.();
       offFailed?.();
       offIntent?.();
-      window.removeEventListener("ssy-login-request", onLoginRequest);
+      offConflict?.();
+      window.removeEventListener("ssy-login-pending", onPending);
+      window.removeEventListener("ssy-login-request", onLoginRequestCompat);
     };
   }, [reload]);
-
-  const startLoginRef = useRef<
-    ((app?: string) => Promise<void>) | null
-  >(null);
 
   const startLogin = async (overrideApp?: string) => {
     setBusy(true);
@@ -171,10 +169,8 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     try {
       const app = overrideApp ?? targetApp;
       bindAppRef.current = app ?? null;
-      const start = await shengsuanyunApi.startLogin(app, null);
-      sessionIdRef.current = start.sessionId;
-      setPhase("pending");
-      await settingsApi.openExternal(start.authorizationUrl);
+      await startLoginFlow(app);
+      // pending 态由 ssy-login-pending 事件驱动（flow 内已派发）
     } catch (e) {
       setPhase("error");
       setError(String(e));
@@ -182,8 +178,6 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       setBusy(false);
     }
   };
-
-  startLoginRef.current = startLogin;
 
   const cancelLogin = async () => {
     if (sessionIdRef.current) {

@@ -185,6 +185,13 @@ function App() {
     useState<SkillsPageSource>("repos");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
 
+  // 胜算云登录全局桥：任何入口发起的登录，完成后自动绑定（App 生命周期一次）
+  useEffect(() => {
+    void import("@/lib/shengsuanyunFlow").then((m) =>
+      m.installGlobalLoginBridge(),
+    );
+  }, []);
+
   // 胜算云登录横幅：跳转到 设置 → 认证 tab
   useEffect(() => {
     const openAuth = () => {

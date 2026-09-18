@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { KeyRound, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { shengsuanyunApi } from "@/lib/api/shengsuanyun";
 
 export function ShengsuanyunLoginBanner({
@@ -77,9 +78,10 @@ export function ShengsuanyunLoginBanner({
           size="lg"
           className="bg-emerald-600 hover:bg-emerald-500"
           onClick={() => {
-            // 携带目标 app 发起登录；认证中心面板负责展示进度并自动绑定
-            window.dispatchEvent(
-              new CustomEvent("ssy-login-request", { detail: { appId } }),
+            // 直接发起 OAuth（打开浏览器授权页），登录完成后由全局桥自动绑定；
+            // 同时跳转认证中心展示进度
+            startLoginFlow(appId).catch((e) =>
+              console.error("start shengsuanyun login failed", e),
             );
             window.dispatchEvent(
               new CustomEvent("ssy-open-auth", { detail: { appId } }),

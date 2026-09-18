@@ -31,6 +31,8 @@ info:
     3. 客户端调 `POST /auth/keys` 换取 `api_key` + `jwt_token`
     4. `state`：UUID v4、5 分钟 TTL、一次性（SDK 强制）
 servers:
+  - url: https://router.shengsuanyun.com
+    description: 模型网关（推理调用 / 模型目录）
   - url: https://api.shengsuanyun.com
     description: 账户 / 钱包 / 模型调用数据
   - url: https://loomloom.shengsuanyun.com
@@ -40,6 +42,86 @@ security:
   - XTokenJwt: []
 
 paths:
+  /api/v1/models:
+    get:
+      operationId: listModels
+      summary: 模型目录
+      description: |
+        返回平台全部可用模型。**模型 id 以 `api_name` 字段为准**（小写形态），
+        推理请求的 `model` 参数必须使用它；`name` 字段是展示名（大小写不同），
+        直接用 `name` 会被网关拒绝（"model is not available"）。
+      security:
+        - BearerKey: []
+      servers:
+        - url: https://router.shengsuanyun.com
+      responses:
+        "200":
+          description: 模型目录
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCatalog"
+
+  /api/v1/messages:
+    post:
+      operationId: createAnthropicMessage
+      summary: Anthropic Messages 兼容推理
+      description: |
+        Anthropic Messages API 兼容端点（含 SSE 流式：请求 `stream: true` 时返回
+        `text/event-stream`）。模型会按平台路由到实际通道（Bedrock / Azure / …），
+        响应中的 `model` 字段是**上游通道的内部模型名**，不是请求的模型 id。
+      security:
+        - BearerKey: []
+      servers:
+        - url: https://router.shengsuanyun.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnthropicMessageRequest"
+      responses:
+        "200":
+          description: 推理结果（非流式）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicMessageResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 流式事件（message_start / content_block_delta / message_stop）
+
+  /api/v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      summary: OpenAI Chat Completions 兼容推理
+      description: |
+        OpenAI 兼容端点（支持 SSE 流式）。**`model` 必须用模型目录中的
+        `api_name`（小写）**，用展示名会返回 invalid_request "model is not available"。
+        部分推理模型会在 `message.reasoning_content` / `reasoning` 中返回思考内容。
+      security:
+        - BearerKey: []
+      servers:
+        - url: https://router.shengsuanyun.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: 推理结果（非流式）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 流式 chunk
+
   /auth/keys:
     post:
       operationId: exchangeCode
@@ -487,3 +569,133 @@ components:
           items: { type: object }
         totalCount:
           type: integer
+  ModelCatalog:
+    type: object
+    required: [data]
+    properties:
+      data:
+        type: array
+        items:
+          type: object
+          properties:
+            company:
+              type: string
+              examples: ["bigmodel", "Anthropic"]
+            name:
+              type: string
+              description: 展示名（大小写与调用 id 不同）
+            api_name:
+              type: string
+              description: '**推理请求 model 参数使用的正式 id**（小写形态）'
+            description:
+              type: string
+
+  AnthropicMessageRequest:
+    type: object
+    required: [model, max_tokens, messages]
+    properties:
+      model:
+        type: string
+        examples: ["anthropic/claude-haiku-4.5"]
+      max_tokens:
+        type: integer
+      stream:
+        type: boolean
+      system:
+        type: string
+      messages:
+        type: array
+        items:
+          type: object
+          required: [role, content]
+          properties:
+            role: { type: string, enum: [user, assistant] }
+            content:
+              description: 字符串或内容块数组（Anthropic 格式）
+
+  AnthropicMessageResponse:
+    type: object
+    properties:
+      id:
+        type: string
+        description: 上游通道内部 id（如 msg_bdrk_…）
+      type:
+        type: string
+        examples: ["message"]
+      role:
+        type: string
+      model:
+        type: string
+        description: 上游通道内部模型名（非请求 id）
+      content:
+        type: array
+        items:
+          type: object
+          properties:
+            type: { type: string }
+            text: { type: string }
+      stop_reason:
+        type: string
+        nullable: true
+      usage:
+        type: object
+        properties:
+          input_tokens: { type: integer }
+          output_tokens: { type: integer }
+          cache_read_input_tokens: { type: integer }
+
+  ChatCompletionRequest:
+    type: object
+    required: [model, messages]
+    properties:
+      model:
+        type: string
+        description: 模型目录中的 api_name（小写）
+      stream:
+        type: boolean
+      max_tokens: { type: integer }
+      messages:
+        type: array
+        items:
+          type: object
+          required: [role, content]
+          properties:
+            role: { type: string, enum: [system, user, assistant] }
+            content: {}
+
+  ChatCompletionResponse:
+    type: object
+    properties:
+      id: { type: string }
+      object:
+        type: string
+        examples: ["chat.completion"]
+      created: { type: integer }
+      model: { type: string }
+      provider:
+        type: string
+        description: 实际上游通道（如 Other-A / Azure）
+      choices:
+        type: array
+        items:
+          type: object
+          properties:
+            index: { type: integer }
+            finish_reason: { type: string, nullable: true }
+            message:
+              type: object
+              properties:
+                role: { type: string }
+                content:
+                  type: string
+                  nullable: true
+                reasoning_content:
+                  type: string
+                  nullable: true
+                  description: 推理模型的思考内容
+      usage:
+        type: object
+        properties:
+          prompt_tokens: { type: integer }
+          completion_tokens: { type: integer }
+          total_tokens: { type: integer }

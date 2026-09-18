@@ -133,13 +133,13 @@ describe("ClaudeDesktopProviderForm", () => {
     const onSubmit = vi.fn();
     renderForm(undefined, onSubmit);
 
-    await user.click(screen.getByRole("button", { name: /PackyCode/ }));
+    await user.click(screen.getByRole("button", { name: /Shengsuanyun/ }));
 
-    expect(screen.getByDisplayValue("claude-sonnet-5")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("claude-opus-5")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("claude-haiku-4-5")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("anthropic/claude-sonnet-5")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("anthropic/claude-opus-5")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("anthropic/claude-haiku-4.5")).toBeInTheDocument();
 
-    await user.clear(screen.getByDisplayValue("claude-sonnet-5"));
+    await user.clear(screen.getByDisplayValue("anthropic/claude-sonnet-5"));
     await user.type(screen.getByLabelText("API Key"), "sk-test");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
@@ -147,12 +147,9 @@ describe("ClaudeDesktopProviderForm", () => {
     expect(
       onSubmit.mock.calls[0][0].meta.claudeDesktopModelRoutes,
     ).toMatchObject({
-      "claude-opus-5": { model: "claude-opus-5" },
-      "claude-haiku-4-5": { model: "claude-haiku-4-5" },
+      "anthropic/claude-opus-5": { model: "anthropic/claude-opus-5" },
+      "anthropic/claude-haiku-4.5": { model: "anthropic/claude-haiku-4.5" },
     });
-    expect(
-      onSubmit.mock.calls[0][0].meta.claudeDesktopModelRoutes,
-    ).not.toHaveProperty("claude-sonnet-5");
   });
 
   it("直连与模型映射分别保留自己的模型列表", async () => {

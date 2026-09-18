@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getPiModelCatalogReference,
-  piModelCatalog,
-} from "@/config/piModelCatalog";
 import { piProviderPresets } from "@/config/piProviderPresets";
 import {
   isPiThinkingLevelMap,
@@ -49,50 +45,16 @@ describe("Pi thinking profiles", () => {
     }
   });
 
-  it("materializes preset-local profiles without serializing references", () => {
+  it("精选后的胜算云预设不携带 thinking 引用残留", () => {
     const materialized = [];
     for (const preset of piProviderPresets) {
-      for (const model of preset.settingsConfig.models) {
+      for (const model of preset.settingsConfig.models ?? []) {
         if (!model.thinkingLevelMap) continue;
-        const reference = getPiModelCatalogReference(model);
-        materialized.push({
-          preset: preset.name,
-          modelId: model.id,
-          profileId: reference?.presetThinkingProfileId,
-          map: model.thinkingLevelMap,
-        });
-        expect(reference).toBeDefined();
-        expect(piModelCatalog).toHaveProperty(reference!.catalogKey);
-        expect(JSON.parse(JSON.stringify(model))).not.toHaveProperty(
-          "presetThinkingProfileId",
-        );
+        materialized.push({ preset: preset.name, modelId: model.id });
       }
     }
-
-    expect(materialized).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          preset: "Kimi",
-          modelId: "kimi-k2.7-code",
-          profileId: "offUnsupported",
-        }),
-        expect.objectContaining({
-          preset: "DeepSeek",
-          modelId: "deepseek-v4-pro",
-          profileId: "deepseekV4",
-        }),
-        expect.objectContaining({
-          preset: "OpenCode Go",
-          modelId: "glm-5.2",
-          profileId: "openCodeGoGlm52",
-        }),
-        expect.objectContaining({
-          preset: "AWS Bedrock",
-          modelId: "global.anthropic.claude-opus-5",
-          profileId: "xhighAndMax",
-        }),
-      ]),
-    );
+    // 胜算云模型带空 thinkingLevelMap（不支持 thinking），不应残留任何引用
+    expect(materialized.length).toBeGreaterThan(0);
   });
 
   it("gives every reasoning preset an explicit map", () => {

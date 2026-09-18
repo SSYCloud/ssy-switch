@@ -128,7 +128,7 @@ export interface HermesProviderSettingsConfig {
   [key: string]: unknown;
 }
 
-export const hermesProviderPresets: HermesProviderPreset[] = [
+const ALL_hermesProviderPresets: HermesProviderPreset[] = [
   // ===== 赞助商预设：文件顺序 = 应用内展示顺序，与 README 赞助商表对齐 =====
   {
     name: "Kimi",
@@ -2038,3 +2038,12 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
     },
   },
 ];
+
+// SSY-Switch: 供应商预设收敛为胜算云 + 各原厂官方入口（产品决策 2026-09-18）。
+const keepOfficialPreset = (p: (typeof ALL_hermesProviderPresets)[number]): boolean =>
+  p.category === "official" ||
+  p.name === "Shengsuanyun" ||
+  p.partnerPromotionKey === "shengsuanyun" ||
+  false;
+
+export const hermesProviderPresets: HermesProviderPreset[] = ALL_hermesProviderPresets.filter(keepOfficialPreset);

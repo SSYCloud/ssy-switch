@@ -13,6 +13,7 @@ import {
   Minimize2,
   X,
   Book,
+  BookOpen,
   Brain,
   Wrench,
   History,
@@ -1365,6 +1366,22 @@ function App() {
                   className="hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <Settings className="w-4 h-4" />
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="icon"
+                  title={t("common.docsCenter")}
+                  className="hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <a
+                    href="https://lean.shengsuanyun.com/apidocs/guides/quick-start"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={t("common.docsCenter")}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                  </a>
                 </Button>
                 <UpdateBadge
                   onClick={() => {

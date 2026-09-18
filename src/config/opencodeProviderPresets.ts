@@ -285,7 +285,7 @@ export function getPresetModelDefaults(
   return models.find((m) => m.id === modelId);
 }
 
-export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
+const ALL_opencodeProviderPresets: OpenCodeProviderPreset[] = [
   // ===== 赞助商预设：文件顺序 = 应用内展示顺序，与 README 赞助商表对齐 =====
   {
     name: "Kimi",
@@ -2715,3 +2715,12 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
     },
   },
 ];
+
+// SSY-Switch: 供应商预设收敛为胜算云 + 各原厂官方入口（产品决策 2026-09-18）。
+const keepOfficialPreset = (p: (typeof ALL_opencodeProviderPresets)[number]): boolean =>
+  p.category === "official" ||
+  p.name === "Shengsuanyun" ||
+  p.partnerPromotionKey === "shengsuanyun" ||
+  (p as { requiresOAuth?: boolean }).requiresOAuth === true;
+
+export const opencodeProviderPresets: OpenCodeProviderPreset[] = ALL_opencodeProviderPresets.filter(keepOfficialPreset);

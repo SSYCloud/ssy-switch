@@ -201,8 +201,11 @@ impl SsyClient {
             .send()
             .await
             .map_err(|e| format!("bill list request failed: {e}"))?;
-        Self::check_auth_and_status(resp.status() == reqwest::StatusCode::UNAUTHORIZED, resp.status())
-            .await?;
+        Self::check_auth_and_status(
+            resp.status() == reqwest::StatusCode::UNAUTHORIZED,
+            resp.status(),
+        )
+        .await?;
         let v: Value = resp
             .json()
             .await
@@ -225,8 +228,11 @@ impl SsyClient {
             .send()
             .await
             .map_err(|e| format!("modality usage request failed: {e}"))?;
-        Self::check_auth_and_status(resp.status() == reqwest::StatusCode::UNAUTHORIZED, resp.status())
-            .await?;
+        Self::check_auth_and_status(
+            resp.status() == reqwest::StatusCode::UNAUTHORIZED,
+            resp.status(),
+        )
+        .await?;
         let v: Value = resp
             .json()
             .await

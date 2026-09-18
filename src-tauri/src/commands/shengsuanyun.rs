@@ -108,7 +108,10 @@ pub async fn shengsuanyun_bill_list(
 ) -> Result<serde_json::Value, String> {
     state
         .manager
-        .bill_list(page.unwrap_or(1).max(1), page_size.unwrap_or(10).clamp(1, 50))
+        .bill_list(
+            page.unwrap_or(1).max(1),
+            page_size.unwrap_or(10).clamp(1, 50),
+        )
         .await
 }
 
@@ -119,10 +122,7 @@ pub async fn shengsuanyun_modality_usage(
     start_date: String,
     end_date: String,
 ) -> Result<serde_json::Value, String> {
-    state
-        .manager
-        .modality_usage(&start_date, &end_date)
-        .await
+    state.manager.modality_usage(&start_date, &end_date).await
 }
 
 /// 查询大模型调用记录（按日/按模型聚合；返回原始 JSON，单位 1e-7 元）。

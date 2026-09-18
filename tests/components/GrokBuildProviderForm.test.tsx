@@ -33,18 +33,19 @@ describe("GrokBuildProviderForm", () => {
       />,
     );
 
-    // 国产官方直连（cn_official）不在 Grok Build 预设列表里
+    // 第三方/聚合预设不在 Grok Build 预设列表里
     expect(screen.queryByRole("button", { name: /BytePlus/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Kimi/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /PatewayAI/ })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: /PatewayAI/ }));
+    await user.click(screen.getByRole("button", { name: /Shengsuanyun/ }));
 
     const baseUrlInput =
       container.querySelector<HTMLInputElement>("#codexBaseUrl");
     const nameInput =
       container.querySelector<HTMLInputElement>('input[name="name"]');
-    expect(baseUrlInput?.value).toBe("https://api.pateway.ai/v1");
-    expect(nameInput?.value).toBe("PatewayAI");
+    expect(baseUrlInput?.value).toBe("https://router.shengsuanyun.com/api/v1");
+    // 预设带 nameKey 时表单填入 i18n key（测试环境不解析）
+    expect(nameInput?.value).toBe("providerForm.presets.shengsuanyun");
   });
 
   it("submits a complete config.toml payload with Grok defaults", async () => {

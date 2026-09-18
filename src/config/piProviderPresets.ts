@@ -2149,6 +2149,13 @@ function materializeVerifiedThinkingProfiles(
   };
 }
 
-export const piProviderPresets = piProviderPresetDefinitions.map(
+const ALL_piProviderPresets = piProviderPresetDefinitions.map(
   materializeVerifiedThinkingProfiles,
 );
+
+const keepOfficialPreset = (p: PiProviderPreset): boolean =>
+  p.category === "official" ||
+  p.name === "Shengsuanyun" ||
+  p.partnerPromotionKey === "shengsuanyun";
+
+export const piProviderPresets = ALL_piProviderPresets.filter(keepOfficialPreset);

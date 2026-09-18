@@ -73,7 +73,7 @@ export interface ProviderPreset {
   modelsUrl?: string;
 }
 
-export const providerPresets: ProviderPreset[] = [
+const ALL_providerPresets: ProviderPreset[] = [
   {
     name: "Shengsuanyun",
     nameKey: "providerForm.presets.shengsuanyun",
@@ -1835,3 +1835,17 @@ export const providerPresets: ProviderPreset[] = [
     iconColor: "#3A3B40",
   },
 ];
+
+// SSY-Switch: 供应商预设收敛为胜算云 + 各原厂官方入口（产品决策 2026-09-18）。
+// requiresOAuth 标记的是第一方 OAuth 预设（Codex/Copilot/xAI/OpenCode Go/Gemini Native），
+// 与 category === "official" 同属保留范围；第三方/聚合/cn_official 预设全部不再展示。
+const keepOfficialPreset = (p: (typeof ALL_providerPresets)[number]): boolean =>
+  p.category === "official" ||
+  p.name === "Shengsuanyun" ||
+  p.partnerPromotionKey === "shengsuanyun" ||
+  p.requiresOAuth === true ||
+  // Google 官方 API 直连与用户圈选保留的入口
+  p.name === "Gemini Native" ||
+  p.name === "OpenCode Go";
+
+export const providerPresets: ProviderPreset[] = ALL_providerPresets.filter(keepOfficialPreset);

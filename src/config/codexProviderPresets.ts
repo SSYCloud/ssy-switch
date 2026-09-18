@@ -124,7 +124,7 @@ function modelCatalog(
   );
 }
 
-export const codexProviderPresets: CodexProviderPreset[] = [
+const ALL_codexProviderPresets: CodexProviderPreset[] = [
   {
     name: "Shengsuanyun",
     nameKey: "providerForm.presets.shengsuanyun",
@@ -2781,3 +2781,14 @@ base_url = "https://cc-api.pipellm.ai/v1"`,
     iconColor: "#3A3B40",
   },
 ];
+
+// SSY-Switch: 供应商预设收敛为胜算云 + 各原厂官方入口（产品决策 2026-09-18）。
+// requiresOAuth 标记的是第一方 OAuth 预设（Codex/Copilot/xAI/OpenCode Go/Gemini Native），
+// 与 category === "official" 同属保留范围；第三方/聚合/cn_official 预设全部不再展示。
+const keepOfficialPreset = (p: (typeof ALL_codexProviderPresets)[number]): boolean =>
+  p.category === "official" ||
+  p.name === "Shengsuanyun" ||
+  p.partnerPromotionKey === "shengsuanyun" ||
+  p.requiresOAuth === true;
+
+export const codexProviderPresets: CodexProviderPreset[] = ALL_codexProviderPresets.filter(keepOfficialPreset);

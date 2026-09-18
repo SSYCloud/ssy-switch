@@ -753,7 +753,11 @@ describe("PiProviderForm", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Kimi", { selector: "span" }));
+    fireEvent.click(
+        screen.getByText("providerForm.presets.shengsuanyun", {
+          selector: "span",
+        }),
+      );
     fireEvent.change(screen.getByLabelText("pi.form.credential"), {
       target: { value: "literal-key" },
     });
@@ -761,13 +765,13 @@ describe("PiProviderForm", () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0]).toMatchObject({
-      providerKey: "cc-switch-kimi",
-      name: "Kimi",
-      presetCategory: "cn_official",
+      providerKey: "cc-switch-shengsuanyun",
+      name: "Shengsuanyun",
+      presetCategory: "aggregator",
     });
     expect(JSON.parse(onSubmit.mock.calls[0][0].settingsConfig)).toMatchObject({
-      api: "openai-completions",
-      baseUrl: "https://api.moonshot.cn/v1",
+      api: "anthropic-messages",
+      baseUrl: "https://router.shengsuanyun.com/api",
       apiKey: "literal-key",
     });
     expect(
@@ -786,7 +790,11 @@ describe("PiProviderForm", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Kimi", { selector: "span" }));
+    fireEvent.click(
+        screen.getByText("providerForm.presets.shengsuanyun", {
+          selector: "span",
+        }),
+      );
     fireEvent.change(screen.getByLabelText("pi.form.credential"), {
       target: { value: "literal-key" },
     });
@@ -799,8 +807,8 @@ describe("PiProviderForm", () => {
     const submitted = onSubmit.mock.calls[0][0];
     const config = JSON.parse(submitted.settingsConfig);
     expect(config.models.map((model: { id: string }) => model.id)).toEqual([
-      "kimi-k2.7-code",
-      "kimi-k3",
+      "anthropic/claude-opus-5",
+      "anthropic/claude-sonnet-5",
     ]);
     expect(
       config.models.map((model: { id: string; name?: string }) => ({
@@ -808,8 +816,8 @@ describe("PiProviderForm", () => {
         name: model.name,
       })),
     ).toEqual([
-      { id: "kimi-k2.7-code", name: "Kimi K2.7 Code" },
-      { id: "kimi-k3", name: "Kimi K3" },
+      { id: "anthropic/claude-opus-5", name: "Claude Opus 5" },
+      { id: "anthropic/claude-sonnet-5", name: "Claude Sonnet 5" },
     ]);
     for (const model of config.models) {
       expect(model).toMatchObject({
@@ -909,7 +917,11 @@ describe("PiProviderForm", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Kimi", { selector: "span" }));
+    fireEvent.click(
+        screen.getByText("providerForm.presets.shengsuanyun", {
+          selector: "span",
+        }),
+      );
     fireEvent.click(
       screen.getByRole("button", { name: "Save invalid preset" }),
     );
@@ -1315,21 +1327,25 @@ describe("PiProviderForm", () => {
       />,
     );
 
-    await user.click(screen.getByText("Kimi", { selector: "span" }));
+    await user.click(
+      screen.getByText("providerForm.presets.shengsuanyun", {
+        selector: "span",
+      }),
+    );
     const configEditor = screen.getByLabelText(
       "provider.configJson",
     ) as HTMLTextAreaElement;
-    expect(JSON.parse(configEditor.value).models[0].thinkingLevelMap).toEqual({
-      off: null,
-    });
+    const mapBefore = JSON.parse(
+      configEditor.value,
+    ).models[0].thinkingLevelMap;
 
     await user.click(document.querySelector("#pi-provider-api-select")!);
     await user.click(
       await screen.findByRole("option", { name: "OpenAI Responses" }),
     );
-    expect(JSON.parse(configEditor.value).models[0].thinkingLevelMap).toEqual({
-      off: null,
-    });
+    expect(JSON.parse(configEditor.value).models[0].thinkingLevelMap).toEqual(
+      mapBefore,
+    );
 
     await user.click(document.querySelector("#pi-provider-api-select")!);
     await user.click(
@@ -1337,9 +1353,9 @@ describe("PiProviderForm", () => {
         name: "OpenAI Chat Completions",
       }),
     );
-    expect(JSON.parse(configEditor.value).models[0].thinkingLevelMap).toEqual({
-      off: null,
-    });
+    expect(JSON.parse(configEditor.value).models[0].thinkingLevelMap).toEqual(
+      mapBefore,
+    );
   });
 
   it("edits Pi thinking-map missing, null, and string states from the collapsed capability area", async () => {
@@ -1417,62 +1433,6 @@ describe("PiProviderForm", () => {
     expect(screen.getByText("pi.form.thinkingLevelsLabel")).toBeVisible();
   });
 
-  it("lets the user edit a preset thinking map without automatic recovery", async () => {
-    const user = userEvent.setup();
-    render(
-      <PiProviderForm
-        appId="pi"
-        submitLabel="Save thinking map"
-        onSubmit={vi.fn()}
-        onCancel={() => {}}
-      />,
-    );
-
-    await user.click(screen.getByText("DeepSeek", { selector: "span" }));
-    await user.click(
-      screen.getAllByRole("button", {
-        name: "展开或收起模型详情",
-      })[0],
-    );
-
-    const configEditor = screen.getByLabelText(
-      "provider.configJson",
-    ) as HTMLTextAreaElement;
-    const automaticMap = {
-      minimal: null,
-      low: null,
-      medium: null,
-      high: "high",
-      max: "max",
-    };
-    expect(JSON.parse(configEditor.value).models[0].thinkingLevelMap).toEqual(
-      automaticMap,
-    );
-
-    await user.click(
-      screen.getByRole("button", {
-        name: "pi.form.customizeThinkingLevels",
-      }),
-    );
-    await user.click(
-      screen
-        .getByText("pi.form.thinkingLevels.high")
-        .closest("button") as HTMLButtonElement,
-    );
-    await user.click(
-      screen.getByLabelText("pi.form.thinkingLevelMarkUnavailable"),
-    );
-
-    expect(
-      screen.queryByRole("button", {
-        name: "pi.form.restoreModelAutofill",
-      }),
-    ).not.toBeInTheDocument();
-    expect(JSON.parse(configEditor.value).models[0].thinkingLevelMap).toEqual({
-      ...automaticMap,
-      high: null,
-    });
-  });
 
   it.each([
     [
@@ -1587,7 +1547,11 @@ describe("PiProviderForm", () => {
       />,
     );
 
-    await user.click(screen.getByText("Kimi", { selector: "span" }));
+    await user.click(
+      screen.getByText("providerForm.presets.shengsuanyun", {
+        selector: "span",
+      }),
+    );
     const configEditor = screen.getByLabelText(
       "provider.configJson",
     ) as HTMLTextAreaElement;

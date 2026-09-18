@@ -220,12 +220,23 @@ class Handler(BaseHTTPRequestHandler):
                 amount = int(payload.get("amount", 0))
                 if not 30 <= amount <= 5000:
                     return self._json({"error": "充值金额须在 ¥30 – ¥5000 之间（后端限制，超出走对公）"}, 400)
+                # 档位下单参数与控制台逐字节一致（2026-09-18 抓包）
+                TIERS = {
+                    10:  (10_000, 22),
+                    30:  (3_000_000_000, 8),
+                    100: (10_000_000_000, 14),
+                    200: (20_000_000_000, 13),
+                    500: (50_000_000_000, 12),
+                }
+                amounts, rid = TIERS.get(
+                    amount, (amount * 10_000, None),  # 自定义：null + 1e-4，下限 ¥30
+                )
                 data = ssy_json(urllib.request.Request(
-                    f"{API}/user/recharge",  # noqa: SSY 自定义金额最低 ¥30（code 70002）
+                    f"{API}/user/recharge",
                     data=json.dumps({
-                        "amounts": amount * 1000,       # 实测口径：10000 → ¥10
+                        "amounts": amounts,
                         "payWay": "alipay",
-                        "recahrgeId": 22,
+                        "recahrgeId": rid,
                         "orderId": secrets.token_hex(8),
                     }).encode(),
                     headers={"x-token": jwt_token(),

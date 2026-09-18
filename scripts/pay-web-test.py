@@ -52,13 +52,22 @@ PAGE = """<!doctype html>
  .ok{color:#059669;font-weight:600}
  .err{color:#dc2626}
  .muted{color:#6b7280;font-size:13px}
+ .tiers{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+ .tier{width:auto;margin:0;padding:6px 14px;background:#f3f4f6;color:#1f2937;font-weight:500}
  table{width:100%;font-size:13px;border-collapse:collapse;margin-top:8px}
  td,th{border-top:1px solid #eee;padding:4px 2px;text-align:left}
  th{color:#6b7280;font-weight:500}
 </style></head><body>
 <div class="card">
   <h1>胜算云充值支付测试</h1>
-  <label>金额（元，最低 30）<input id="amount" type="number" min="30" value="30"></label>
+  <div class="tiers">
+    <button class="tier" onclick="setAmount(10)">¥10</button>
+    <button class="tier" onclick="setAmount(30)">¥30</button>
+    <button class="tier" onclick="setAmount(100)">¥100</button>
+    <button class="tier" onclick="setAmount(200)">¥200</button>
+    <button class="tier" onclick="setAmount(500)">¥500</button>
+  </div>
+  <label>自定义金额（元，30–5000）<input id="amount" type="number" min="30" max="5000" value="30"></label>
   <button id="go" onclick="createOrder()">创建订单并显示二维码</button>
   <div id="qr"></div>
   <div id="status" class="muted"></div>
@@ -67,6 +76,7 @@ PAGE = """<!doctype html>
 <script>
 let timer = null;
 const $ = (id) => document.getElementById(id);
+function setAmount(v) { $("amount").value = v; }
 const yuan = (raw) => "¥" + (raw / 10000).toFixed(2);
 
 async function api(path, body) {
@@ -79,8 +89,9 @@ async function api(path, body) {
 
 async function createOrder() {
   const amount = parseInt($("amount").value, 10);
-  if (!(amount >= 30)) {
-    $("status").innerHTML = '<span class="err">最低充值金额为 ¥30</span>';
+  if (!(amount >= 30 && amount <= 5000)) {
+    $("status").innerHTML =
+      '<span class="err">充值金额须在 ¥30 – ¥5000 之间（超出请走对公转账）</span>';
     return;
   }
   $("go").disabled = true; $("qr").innerHTML = ""; $("result").innerHTML = "";
@@ -207,8 +218,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.path == "/api/order":
                 amount = int(payload.get("amount", 0))
-                if amount < 30:
-                    return self._json({"error": "最低充值金额为 ¥30（后端限制 code 70002）"}, 400)
+                if not 30 <= amount <= 5000:
+                    return self._json({"error": "充值金额须在 ¥30 – ¥5000 之间（后端限制，超出走对公）"}, 400)
                 data = ssy_json(urllib.request.Request(
                     f"{API}/user/recharge",  # noqa: SSY 自定义金额最低 ¥30（code 70002）
                     data=json.dumps({

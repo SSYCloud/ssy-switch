@@ -95,11 +95,11 @@ export function CcSwitchImportSection() {
         <div className="space-y-2 rounded-lg border border-border/60 bg-muted/40 p-4 text-sm">
           <p>
             {t("settings.ccswitchImport.found", {
+              version: preview.sourceVersion,
+              total: preview.total,
               defaultValue:
                 "在原版 CC Switch（schema v{{version}}）中找到 {{total}} 个供应商：",
-            })
-              .replace("{{version}}", String(preview.sourceVersion))
-              .replace("{{total}}", String(preview.total))}
+            })}
           </p>
           <ul className="list-disc pl-5 text-muted-foreground">
             {preview.perApp.map(([app, n]) => (
@@ -111,9 +111,10 @@ export function CcSwitchImportSection() {
           {preview.conflicts > 0 && (
             <p className="text-amber-600 dark:text-amber-400">
               {t("settings.ccswitchImport.conflicts", {
+                n: preview.conflicts,
                 defaultValue:
                   "{{n}} 个与现有卡片同名同 ID，将被跳过（不会覆盖）。",
-              }).replace("{{n}}", String(preview.conflicts))}
+              })}
             </p>
           )}
           <div className="flex gap-2 pt-1">
@@ -137,11 +138,11 @@ export function CcSwitchImportSection() {
         <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm">
           <p>
             {t("settings.ccswitchImport.done", {
+              n: result.imported,
+              skip: result.skippedExisting,
               defaultValue:
                 "导入完成：新增 {{n}} 个供应商，跳过已有 {{skip}} 个。导入的卡片均未激活，请在列表中手动启用。",
-            })
-              .replace("{{n}}", String(result.imported))
-              .replace("{{skip}}", String(result.skippedExisting))}
+            })}
           </p>
           {result.backupFile && (
             <p className="mt-1 text-xs text-muted-foreground">

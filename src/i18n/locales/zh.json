@@ -907,10 +907,10 @@
       "title": "从 CC Switch 导入",
       "description": "读取原版 CC Switch 的供应商配置（只读，不会修改原版数据）。导入的卡片不会自动激活，导入前会自动备份本地数据。",
       "scan": "扫描原版数据",
-      "found": "在原版 CC Switch（schema v{version}）中找到 {total} 个供应商：",
-      "conflicts": "{n} 个与现有卡片同名同 ID，将被跳过（不会覆盖）。",
+      "found": "在原版 CC Switch（schema v{{version}}）中找到 {{total}} 个供应商：",
+      "conflicts": "{{n}} 个与现有卡片同名同 ID，将被跳过（不会覆盖）。",
       "confirm": "备份并导入",
-      "done": "导入完成：新增 {n} 个供应商，跳过已有 {skip} 个。导入的卡片均未激活，请在列表中手动启用。",
+      "done": "导入完成：新增 {{n}} 个供应商，跳过已有 {{skip}} 个。导入的卡片均未激活，请在列表中手动启用。",
       "backup": "已自动备份本地数据",
       "notFound": "未找到原版 CC Switch 数据库（~/.cc-switch/cc-switch.db）"
     }

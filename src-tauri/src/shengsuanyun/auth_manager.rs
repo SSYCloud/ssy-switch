@@ -13,6 +13,7 @@ use super::client::SsyClient;
 use super::credential_store::{self as creds, StoredCredentials};
 use super::models::*;
 use crate::database::Database;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -252,6 +253,19 @@ impl ShengsuanyunAuthManager {
             }
         }
         Ok(filled)
+    }
+
+    /// 查询大模型调用记录（按日/按模型，total_amount 单位 1e-7 元）。
+    /// 使用首个账号的 jwt 认证。
+    pub async fn user_usage(&self, start_date: &str, end_date: &str) -> Result<Value, String> {
+        let accounts = self.db.list_shengsuanyun_accounts()?;
+        let account = accounts
+            .first()
+            .ok_or_else(|| "not logged in".to_string())?;
+        let credentials = creds::load_credentials(&self.db, &account.id)?;
+        self.client
+            .fetch_user_usage(start_date, end_date, credentials.identity_token())
+            .await
     }
 
     /// 登出：删除 Keychain 凭据 + DB 账号 + 绑定记录。幂等。

@@ -1613,6 +1613,7 @@ pub fn run() {
             commands::read_live_provider_settings,
             commands::analytics_track,
             commands::analytics_install_id,
+            commands::shengsuanyun_user_usage,
             commands::shengsuanyun_start_login,
             commands::shengsuanyun_bind_account,
             commands::shengsuanyun_bind_all_apps,

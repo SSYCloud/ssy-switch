@@ -3296,6 +3296,16 @@
       "trigger": "Key を選択",
       "unlimited": "無制限",
       "used": "使用済み"
-    }
+    },
+    "usageStats": "利用統計",
+    "lastDays": "過去 {{n}} 日",
+    "close": "閉じる",
+    "loadingStats": "読み込み中…",
+    "statsTotal": "期間合計消費",
+    "statsTokens": "合計トークン",
+    "noUsage": "期間内の利用記録はありません",
+    "model": "モデル",
+    "tokens": "トークン",
+    "amount": "消費"
   }
 }

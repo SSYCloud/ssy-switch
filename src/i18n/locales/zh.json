@@ -3301,6 +3301,16 @@
     "healthFail": "{{app}} 连通性检查未通过，请检查网络或重新登录后重试",
     "credentialsExpired": "登录凭据已失效，请重新登录",
     "ratelimited": "请求过于频繁，请稍后重试",
-    "upstreamDown": "胜算云服务暂时不可用，请稍后重试"
+    "upstreamDown": "胜算云服务暂时不可用，请稍后重试",
+    "usageStats": "调用统计",
+    "lastDays": "近 {{n}} 天",
+    "close": "关闭",
+    "loadingStats": "加载中…",
+    "statsTotal": "区间总消费",
+    "statsTokens": "总 tokens",
+    "noUsage": "区间内无调用记录",
+    "model": "模型",
+    "tokens": "Tokens",
+    "amount": "消费"
   }
 }

@@ -99,6 +99,16 @@ pub async fn shengsuanyun_refresh_balance(
     state.manager.refresh_balance(&account_id).await
 }
 
+/// 查询大模型调用记录（按日/按模型聚合；返回原始 JSON，单位 1e-7 元）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_user_usage(
+    state: State<'_, ShengsuanyunState>,
+    start_date: String,
+    end_date: String,
+) -> Result<serde_json::Value, String> {
+    state.manager.user_usage(&start_date, &end_date).await
+}
+
 /// 登出：清理 Keychain 凭据、DB 账号与绑定。
 #[tauri::command(rename_all = "camelCase")]
 pub async fn shengsuanyun_logout(

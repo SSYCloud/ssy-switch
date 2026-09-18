@@ -3297,6 +3297,16 @@
       "trigger": "選擇 Key",
       "unlimited": "無限制",
       "used": "已使用"
-    }
+    },
+    "usageStats": "調用統計",
+    "lastDays": "近 {{n}} 天",
+    "close": "關閉",
+    "loadingStats": "載入中…",
+    "statsTotal": "區間總消費",
+    "statsTokens": "總 tokens",
+    "noUsage": "區間內無調用記錄",
+    "model": "模型",
+    "tokens": "Tokens",
+    "amount": "消費"
   }
 }

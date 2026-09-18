@@ -3301,6 +3301,16 @@
     "healthFail": "Connectivity check failed for {{app}} — check your network or re-login and retry",
     "credentialsExpired": "Login credentials expired, please log in again",
     "ratelimited": "Too many requests, please retry later",
-    "upstreamDown": "Shengsuanyun service is temporarily unavailable"
+    "upstreamDown": "Shengsuanyun service is temporarily unavailable",
+    "usageStats": "Usage Statistics",
+    "lastDays": "Last {{n}} days",
+    "close": "Close",
+    "loadingStats": "Loading…",
+    "statsTotal": "Total spent",
+    "statsTokens": "Total tokens",
+    "noUsage": "No usage in this period",
+    "model": "Model",
+    "tokens": "Tokens",
+    "amount": "Spent"
   }
 }

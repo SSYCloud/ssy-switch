@@ -145,6 +145,46 @@ impl SsyClient {
         })
     }
 
+    /// 查询大模型调用记录（按日/按模型聚合）。
+    /// `total_amount` 单位为 1e-7 元（与 loom balance 的 *T 字段同口径）。
+    /// 仅接受 jwt 认证（网关 Key 返回 20003）。
+    pub async fn fetch_user_usage(
+        &self,
+        start_date: &str,
+        end_date: &str,
+        token: &str,
+    ) -> Result<Value, String> {
+        let resp = self
+            .http
+            .get(format!("{SSY_API_BASE}/modelrouter/userusage"))
+            .query(&[("startDate", start_date), ("endDate", end_date)])
+            .header("x-token", token)
+            .send()
+            .await
+            .map_err(|e| format!("user usage request failed: {e}"))?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err("401 token invalid".to_string());
+        }
+        if !resp.status().is_success() {
+            return Err(format!("user usage HTTP {}", resp.status()));
+        }
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("decode user usage: {e}"))?;
+        // 业务码校验（上游失败时 code != 0 且 data 里没有 usages）
+        let biz_code = v.get("code").and_then(Value::as_i64).unwrap_or(0);
+        if biz_code != 0 {
+            return Err(format!(
+                "user usage failed: {}",
+                v.pointer("/msg")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown error")
+            ));
+        }
+        Ok(v.get("data").cloned().unwrap_or(v))
+    }
+
     /// 异步探测创作者角色：marketListings 非空即创作者。失败按非创作者处理。
     pub async fn detect_creator_role(&self, api_key: &str) -> bool {
         let Ok(resp) = self

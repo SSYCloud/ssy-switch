@@ -97,6 +97,31 @@ export function bindShengsuanyunAllApps(
   return invoke("shengsuanyun_bind_all_apps", { accountId });
 }
 
+export interface UsageDayDetail {
+  model: string;
+  /** 1e-7 元 */
+  total_amount: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface UsageDay {
+  date: string;
+  details: UsageDayDetail[];
+}
+
+export interface UserUsageResponse {
+  usages: UsageDay[];
+}
+
+export function getUserUsage(
+  startDate: string,
+  endDate: string,
+): Promise<UserUsageResponse> {
+  return invoke("shengsuanyun_user_usage", { startDate, endDate });
+}
+
 export function bindShengsuanyunAccount(
   appType: string,
   accountId: string,
@@ -159,4 +184,5 @@ export const shengsuanyunApi = {
   revealKey: revealShengsuanyunKey,
   getBinding: getShengsuanyunBinding,
   setBindingKey: setShengsuanyunBindingKey,
+  getUserUsage,
 };

@@ -56,7 +56,7 @@ export function ShengsuanyunLoginBanner({
     <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-transparent p-5">
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
-          <ProviderIcon name="shengsuanyun" size={26} />
+          <ProviderIcon icon="shengsuanyun" name="shengsuanyun" size={26} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 font-semibold">

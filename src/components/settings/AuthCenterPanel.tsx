@@ -73,7 +73,7 @@ export function AuthCenterPanel({ authScrollTarget }: AuthCenterPanelProps) {
       <section className="scroll-mt-4 rounded-xl border border-border/60 bg-card/60 p-6">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-            <ProviderIcon name="shengsuanyun" size={20} />
+            <ProviderIcon icon="shengsuanyun" name="shengsuanyun" size={20} />
           </div>
           <div>
             <h4 className="font-medium">

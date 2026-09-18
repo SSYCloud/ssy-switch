@@ -23,9 +23,15 @@ import {
 
 type Phase = "idle" | "pending" | "error";
 
-/// 402 / 余额不足错误特征（用于"前往充值"引导）
-function isInsufficientBalance(error: unknown): boolean {
-  return /402|insufficient|余额不足/i.test(String(error));
+/** 胜算云错误分类（立项 P0 错误诊断映射） */
+type SsyErrorKind = "insufficient" | "relogin" | "ratelimit" | "upstream" | "unknown";
+function classifySsyError(error: unknown): SsyErrorKind {
+  const raw = String(error);
+  if (/402|insufficient|余额不足/i.test(raw)) return "insufficient";
+  if (/401|token invalid|token expired|unauthorized|凭据失效/i.test(raw)) return "relogin";
+  if (/429|rate limit/i.test(raw)) return "ratelimit";
+  if (/5\d\d|bad gateway|service unavailable|暂时不可用/i.test(raw)) return "upstream";
+  return "unknown";
 }
 
 interface OAuthIntent {
@@ -46,6 +52,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const [accounts, setAccounts] = useState<ShengsuanyunAccount[]>([]);
   const [busy, setBusy] = useState(false);
   const [intent, setIntent] = useState<OAuthIntent | null>(null);
+  const [health, setHealth] = useState<{ app: string; ok: boolean } | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
   const bindAppRef = useRef<string | null>(targetApp ?? null);
@@ -117,6 +124,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     let offFailed: UnlistenFn | undefined;
     let offIntent: UnlistenFn | undefined;
     let offConflict: UnlistenFn | undefined;
+    let offHealth: UnlistenFn | undefined;
     let disposed = false;
 
     (async () => {
@@ -134,6 +142,13 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
           }),
         );
       });
+      // 健康检查结果（绑定后自动探测）
+      offHealth = await listen<{ appType: string; ok: boolean; message: string }>(
+        "ssy-health-checked",
+        (e) => {
+          setHealth({ app: e.payload.appType, ok: e.payload.ok });
+        },
+      );
       offFailed = await listen<{ sessionId: string; reason: string }>(
         "shengsuanyun-oauth-failed",
         (e) => {
@@ -159,6 +174,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       offFailed?.();
       offIntent?.();
       offConflict?.();
+      offHealth?.();
       window.removeEventListener("ssy-login-pending", onPending);
       window.removeEventListener("ssy-login-request", onLoginRequestCompat);
     };
@@ -225,6 +241,37 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       await settingsApi.openExternal(SSY_RECHARGE_URL);
     } catch (e) {
       setError(String(e));
+    }
+  };
+
+  const describeError = (error: string): { text: string; action: "recharge" | "relogin" | null } => {
+    switch (classifySsyError(error)) {
+      case "insufficient":
+        return {
+          text: t("shengsuanyun.insufficientBalance", { defaultValue: "余额不足，无法完成请求" }),
+          action: "recharge",
+        };
+      case "relogin":
+        return {
+          text: t("shengsuanyun.credentialsExpired", {
+            defaultValue: "登录凭据已失效，请重新登录",
+          }),
+          action: "relogin",
+        };
+      case "ratelimit":
+        return {
+          text: t("shengsuanyun.ratelimited", { defaultValue: "请求过于频繁，请稍后重试" }),
+          action: null,
+        };
+      case "upstream":
+        return {
+          text: t("shengsuanyun.upstreamDown", {
+            defaultValue: "胜算云服务暂时不可用，请稍后重试",
+          }),
+          action: null,
+        };
+      default:
+        return { text: error, action: null };
     }
   };
 
@@ -335,7 +382,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
                   ? `¥${a.balanceYuan.toFixed(2)}`
                   : "—"}
               </span>
-              {a.voucherYuan != null && a.voucherYuan > 0 && (
+              {a.voucherYuan != null && (
                 <span className="ml-2">
                   {t("shengsuanyun.voucher", { defaultValue: "体验券" })}:{" "}
                   ¥{a.voucherYuan.toFixed(2)}
@@ -407,19 +454,59 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         </div>
       ))}
 
+      {/* 额度不足提醒（立项 P0：额度提醒） */}
+      {accounts.some((a) => a.balanceYuan != null && a.balanceYuan < 10) && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700 dark:text-orange-300">
+          <span>
+            {t("shengsuanyun.lowBalance", {
+              defaultValue: "余额较低，可能很快用尽",
+            })}
+          </span>
+          <Button variant="outline" size="sm" onClick={openRecharge} disabled={busy}>
+            <Wallet className="mr-1 h-3.5 w-3.5" />
+            {t("shengsuanyun.goRecharge", { defaultValue: "前往充值" })}
+          </Button>
+        </div>
+      )}
+
+      {/* 绑定后的健康检查结果（一键测试） */}
+      {health && (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            health.ok
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+          }`}
+        >
+          {health.ok
+            ? t("shengsuanyun.healthOk", {
+                defaultValue: "连通性检查通过，{{app}} 可以正常调用胜算云",
+                app: health.app,
+              })
+            : t("shengsuanyun.healthFail", {
+                defaultValue:
+                  "{{app}} 连通性检查未通过，请检查网络或重新登录后重试",
+                app: health.app,
+              })}
+        </div>
+      )}
+
       {phase === "error" && error && (
         <div className="space-y-2" role="alert">
           <p className="text-sm text-destructive">
-            {isInsufficientBalance(error)
-              ? t("shengsuanyun.insufficientBalance", {
-                  defaultValue: "余额不足，无法完成请求",
-                })
-              : `${t("shengsuanyun.failed", { defaultValue: "登录失败" })}: ${error}`}
+            {describeError(error).text ||
+              `${t("shengsuanyun.failed", { defaultValue: "登录失败" })}: ${error}`}
           </p>
-          {isInsufficientBalance(error) && (
+          {describeError(error).action === "recharge" && (
             <Button size="sm" onClick={openRecharge} disabled={busy}>
               <Wallet className="mr-1 h-4 w-4" />
               {t("shengsuanyun.goRecharge", { defaultValue: "前往充值" })}
+            </Button>
+          )}
+          {describeError(error).action === "relogin" && (
+            <Button size="sm" onClick={() => startLogin()} disabled={busy}>
+              <LogIn className="mr-1 h-4 w-4" />
+              {t("shengsuanyun.relogin", { defaultValue: "重新登录" })}
             </Button>
           )}
         </div>

@@ -7,6 +7,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { settingsApi } from "./api/settings";
 import { analyticsApi } from "./api/analytics";
+import { streamCheckProvider } from "./api/connectivity-check";
+import type { AppId } from "./api/types";
 import {
   bindShengsuanyunAccount,
   bindShengsuanyunAllApps,
@@ -65,6 +67,27 @@ async function handleOAuthComplete(): Promise<void> {
     if (results.some((r) => r.status === "conflict")) {
       window.dispatchEvent(new CustomEvent("ssy-bind-conflict"));
     }
+    // 健康检查：绑定成功的 provider 立即做一次连通性探测（立项 P0"一键测试"）
+    const apps = app ? [app] : ["claude", "codex", "gemini"];
+    results.forEach((r, i) => {
+      if (r.status === "ok" && r.providerId) {
+        const appType = apps[i] ?? apps[0];
+        void streamCheckProvider(appType as AppId, r.providerId)
+          .then((res) => {
+            window.dispatchEvent(
+              new CustomEvent("ssy-health-checked", {
+                detail: {
+                  appType,
+                  providerId: r.providerId,
+                  ok: res.success && res.status === "operational",
+                  message: res.message,
+                },
+              }),
+            );
+          })
+          .catch(() => {});
+      }
+    });
   } catch (e) {
     window.dispatchEvent(
       new CustomEvent("ssy-bind-error", { detail: String(e) }),

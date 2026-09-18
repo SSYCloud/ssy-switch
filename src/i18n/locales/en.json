@@ -3295,6 +3295,12 @@
     },
     "recharge": "Recharge",
     "goRecharge": "Recharge now",
-    "insufficientBalance": "Insufficient balance"
+    "insufficientBalance": "Insufficient balance",
+    "lowBalance": "Balance is running low",
+    "healthOk": "Connectivity check passed — {{app}} is ready for Shengsuanyun calls",
+    "healthFail": "Connectivity check failed for {{app}} — check your network or re-login and retry",
+    "credentialsExpired": "Login credentials expired, please log in again",
+    "ratelimited": "Too many requests, please retry later",
+    "upstreamDown": "Shengsuanyun service is temporarily unavailable"
   }
 }

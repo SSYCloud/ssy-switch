@@ -3295,6 +3295,12 @@
     },
     "recharge": "充值",
     "goRecharge": "前往充值",
-    "insufficientBalance": "余额不足，无法完成请求"
+    "insufficientBalance": "余额不足，无法完成请求",
+    "lowBalance": "余额较低，可能很快用尽",
+    "healthOk": "连通性检查通过，{{app}} 可以正常调用胜算云",
+    "healthFail": "{{app}} 连通性检查未通过，请检查网络或重新登录后重试",
+    "credentialsExpired": "登录凭据已失效，请重新登录",
+    "ratelimited": "请求过于频繁，请稍后重试",
+    "upstreamDown": "胜算云服务暂时不可用，请稍后重试"
   }
 }

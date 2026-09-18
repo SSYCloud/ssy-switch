@@ -1,0 +1,489 @@
+openapi: 3.1.0
+info:
+  title: Shengsuanyun Open Platform API
+  version: 0.1.0
+  description: |
+    胜算云开放平台 REST 契约 —— SSY SDK（Rust/TS/Go…）的唯一事实源。
+
+    ## 服务器
+    - `api.shengsuanyun.com`：账户/钱包/模型调用数据
+    - `loomloom.shengsuanyun.com`：Loom 市场（余额、创作者、SkillBot）
+
+    ## 认证（双凭据体系，按端点选择）
+    - `XTokenJwt`：`x-token: <jwt>` —— OAuth 登录凭据，用于**账户/数据类**端点
+      （/user/info、/modelrouter/*、/userorder/*）。网关 API Key 会被拒绝
+      （code 20003 / 20001）。
+    - `BearerKey`：`Authorization: Bearer <api_key>` —— **模型网关**凭据，
+      用于 loom balance 与模型调用本身。
+
+    ## 响应封装与单位
+    - 除 loom balance 外，所有响应为 `{ code, data, msg }` 封装；`code = 0` 成功，
+      非 0 业务失败（消息在 `msg`）。
+    - 金额单位两套，严格按 schema 标注使用：
+      - `AmountT1e4`：1e-4 元（10,000 = 1 元）—— 钱包 Assets/账单
+      - `AmountT1e7`：1e-7 元（10,000,000 = 1 元）—— loom 余额/调用消费
+    - 字段名大小写历史上不稳定（`ID|id`、`Wallet|wallet`），SDK 实现需做兜底；
+      本规范以实测主形态为准。
+
+    ## OAuth 授权（非 REST，浏览器流程）
+    1. 浏览器打开 `GET https://router.shengsuanyun.com/auth?callback_url=<loopback>&state=<uuid>`
+    2. 授权后上游 302 回 `callback_url?code=<code>&state=<state>`
+    3. 客户端调 `POST /auth/keys` 换取 `api_key` + `jwt_token`
+    4. `state`：UUID v4、5 分钟 TTL、一次性（SDK 强制）
+servers:
+  - url: https://api.shengsuanyun.com
+    description: 账户 / 钱包 / 模型调用数据
+  - url: https://loomloom.shengsuanyun.com
+    description: Loom 市场（余额 / 创作者）
+
+security:
+  - XTokenJwt: []
+
+paths:
+  /auth/keys:
+    post:
+      operationId: exchangeCode
+      summary: OAuth code 换 API Key + JWT
+      description: |
+        Authorization Code 换取双凭据。`code` 一次性、短 TTL。
+        响应层级历史上不稳定，SDK 按以下顺序兜底取值：
+        `data.data.api_key` → `data.api_key` → `api_key`；
+        `jwt_token` 同理，且 `api_key` 缺失时以 `jwt_token` 兜底。
+        `code != 0` 视为业务失败。
+      security: []
+      servers:
+        - url: https://api.shengsuanyun.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, callback_url]
+              properties:
+                code:
+                  type: string
+                  description: OAuth 授权码（一次性）
+                callback_url:
+                  type: string
+                  format: uri
+                  description: 必须与授权时 callback_url 完全一致
+      responses:
+        "200":
+          description: 换取成功或业务失败（以 code 区分）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ApiKeyExchangeData"
+        "4XX":
+          description: HTTP 层失败（msg 含上游错误信息）
+
+  /user/info:
+    get:
+      operationId: getUserInfo
+      summary: 当前用户信息与钱包（余额 / 体验券）
+      description: '必须 `x-token: <jwt_token>`；网关 Key 返回 code 20003。'
+      servers:
+        - url: https://api.shengsuanyun.com
+      responses:
+        "200":
+          description: 用户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserInfo"
+
+  /modelrouter/userusage:
+    get:
+      operationId: getModelUsageDaily
+      summary: 大模型调用统计（按日 × 按模型）
+      servers:
+        - url: https://api.shengsuanyun.com
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+      responses:
+        "200":
+          description: 按日聚合的调用用量
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UsageDailyData"
+
+  /modelrouter/modalities/userusage:
+    get:
+      operationId: getModalityUsage
+      summary: 多模态调用统计（图片 / 视频）
+      description: |
+        只覆盖多模态模型（如 Doubao Seedance、GPT Image）。
+        注意：参数名为 `startDate`/`endDate`；用 `start_time` 会返回空。
+      servers:
+        - url: https://api.shengsuanyun.com
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+      responses:
+        "200":
+          description: 多模态按日用量
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ModalityUsageData"
+
+  /modelrouter/userlog:
+    get:
+      operationId: listCallLogs
+      summary: 单次调用流水（分页）
+      description: 逐笔请求级日志，含延迟与实际上游通道（provider）。
+      servers:
+        - url: https://api.shengsuanyun.com
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+      responses:
+        "200":
+          description: 调用日志
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CallLogData"
+
+  /userorder/billlist:
+    post:
+      operationId: listBills
+      summary: 充值 / 账单流水（分页）
+      description: |
+        **只接受 POST**（GET 返回 404）。Asset/Balance 单位 1e-4 元。
+        BillType = `recharge` 表示充值；`BillSubType` 标识支付渠道
+        （如 `wechat_pay_recharge`）。
+      servers:
+        - url: https://api.shengsuanyun.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                page_size:
+                  type: integer
+                  minimum: 1
+                  maximum: 50
+                  default: 10
+      responses:
+        "200":
+          description: 账单流水
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BusinessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/BillListData"
+
+  /loom/v1/users/me/balance:
+    get:
+      operationId: getLoomBalance
+      summary: Loom 侧可用余额
+      description: |
+        官方推荐的连通性自检端点。`availableBalanceT` 单位 1e-7 元
+        （10,000,000 = 1 元）；`availableBalance.amount` 为字符串形式的元。
+        接受 Bearer API Key 或 x-token JWT。
+      security:
+        - BearerKey: []
+        - XTokenJwt: []
+      servers:
+        - url: https://loomloom.shengsuanyun.com
+      responses:
+        "200":
+          description: 余额
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoomBalance"
+
+  /loom/v1/creators/me/marketListings:
+    get:
+      operationId: listCreatorMarketListings
+      summary: 创作者市场 listings（创作者角色探测）
+      description: |
+        普通用户也可 200 + 空 `items`；仅当 `items` 非空才视为创作者，
+        不能以 HTTP 状态码单独判定。
+      servers:
+        - url: https://loomloom.shengsuanyun.com
+      parameters:
+        - name: pageSize
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: listings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketListings"
+components:
+  securitySchemes:
+    XTokenJwt:
+      type: apiKey
+      in: header
+      name: x-token
+      description: OAuth 登录凭据（jwt_token）
+    BearerKey:
+      type: http
+      scheme: bearer
+      description: 模型网关 API Key（api_key）
+
+  parameters:
+    StartDate:
+      name: startDate
+      in: query
+      required: true
+      schema: { type: string, format: date, examples: ["2026-09-11"] }
+    EndDate:
+      name: endDate
+      in: query
+      required: true
+      schema: { type: string, format: date, examples: ["2026-09-18"] }
+
+  schemas:
+    BusinessEnvelope:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: integer
+          description: "0 = 成功；非 0 = 业务失败（如 20003 凭据无效）"
+        msg:
+          type: string
+        data:
+          description: 业务数据（结构随端点不同）
+
+    AmountT1e4:
+      type: integer
+      format: int64
+      description: 金额，单位 1e-4 元（10,000 = 1 元）
+
+    AmountT1e7:
+      type: number
+      description: 金额，单位 1e-7 元（10,000,000 = 1 元）；实测可能为整数或字符串
+
+    ApiKeyExchangeData:
+      type: object
+      description: 双层 data 包裹，字段按 api_key / jwt_token 兜底提取
+      properties:
+        api_key:
+          type: string
+          description: 模型网关 Key（Bearer）
+        jwt_token:
+          type: string
+          description: 用户身份 JWT（x-token，用于账户类端点）
+
+    Wallet:
+      type: object
+      properties:
+        Assets:
+          $ref: "#/components/schemas/AmountT1e4"
+        VoucherBalance:
+          $ref: "#/components/schemas/AmountT1e4"
+        Accumulate:
+          $ref: "#/components/schemas/AmountT1e4"
+        TotalRechargeAmount:
+          $ref: "#/components/schemas/AmountT1e4"
+
+    UserInfo:
+      type: object
+      description: 字段大小写历史不稳定（ID|id、Nickname|nickname），SDK 需兜底
+      properties:
+        ID:
+          type: string
+          description: 用户唯一标识（可能为空——上游缺陷，SDK 需容忍）
+        Username:
+          type: string
+        Nickname:
+          type: string
+        Email:
+          type: string
+        HeadImg:
+          type: string
+        Wallet:
+          $ref: "#/components/schemas/Wallet"
+
+    UsageDetail:
+      type: object
+      required: [model, total_amount, total_tokens]
+      properties:
+        model:
+          type: string
+          examples: ["bigmodel/GLM-5.3-Flash"]
+        total_amount:
+          $ref: "#/components/schemas/AmountT1e7"
+        input_tokens: { type: integer, format: int64 }
+        output_tokens: { type: integer, format: int64 }
+        total_tokens: { type: integer, format: int64 }
+
+    UsageDailyData:
+      type: object
+      properties:
+        usages:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date-time
+              details:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageDetail"
+
+    ModalityUsageData:
+      type: object
+      properties:
+        total:
+          type: integer
+        usages:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date-time
+              details:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    model: { type: string }
+                    total_amount:
+                      $ref: "#/components/schemas/AmountT1e7"
+
+    CallLogEntry:
+      type: object
+      properties:
+        request_id:
+          type: string
+        request_time:
+          type: string
+          format: date-time
+        model:
+          type: object
+          properties:
+            id: { type: integer }
+            company: { type: string }
+            name: { type: string }
+        input_tokens: { type: integer, format: int64 }
+        output_tokens: { type: integer, format: int64 }
+        total_amount:
+          $ref: "#/components/schemas/AmountT1e7"
+        cached_discount:
+          $ref: "#/components/schemas/AmountT1e7"
+        throughput: { type: integer }
+        latency: { type: integer, description: 毫秒 }
+        provider:
+          type: string
+          description: 实际上游通道（Amazon Bedrock / Azure / …）
+        request_ip: { type: string }
+        router_app: { type: string, nullable: true }
+
+    CallLogData:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CallLogEntry"
+
+    Bill:
+      type: object
+      properties:
+        ID: { type: integer }
+        CreatedAt: { type: string, format: date-time }
+        Asset:
+          $ref: "#/components/schemas/AmountT1e4"
+        Balance:
+          $ref: "#/components/schemas/AmountT1e4"
+          description: 本笔变动后的余额快照
+        BalanceStatementType:
+          type: string
+          examples: ["收入"]
+        BillType:
+          type: string
+          examples: ["recharge"]
+        BillSubType:
+          type: string
+          examples: ["wechat_pay_recharge"]
+        PaymentOrderID: { type: integer }
+
+    BillListData:
+      type: object
+      properties:
+        bills:
+          type: array
+          items:
+            $ref: "#/components/schemas/Bill"
+
+    LoomBalance:
+      type: object
+      properties:
+        currency:
+          type: string
+          examples: ["CNY"]
+        availableBalanceT:
+          $ref: "#/components/schemas/AmountT1e7"
+        availableBalance:
+          type: object
+          properties:
+            amount:
+              type: string
+              description: 十进制字符串形式的元
+            currency:
+              type: string
+
+    MarketListings:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { type: object }
+        totalCount:
+          type: integer

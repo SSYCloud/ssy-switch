@@ -47,6 +47,28 @@ export function AuthCenterPanel({ authScrollTarget }: AuthCenterPanelProps) {
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-border/60 bg-card/60 p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+            <ProviderIcon icon="shengsuanyun" name="shengsuanyun" size={20} />
+          </div>
+          <div>
+            <h4 className="font-medium">
+              {t("settings.authCenter.shengsuanyunTitle", {
+                defaultValue: "胜算云",
+              })}
+            </h4>
+            <p className="text-sm text-muted-foreground">
+              {t("settings.authCenter.shengsuanyunDescription", {
+                defaultValue: "一键登录胜算云，自动绑定 API Key",
+              })}
+            </p>
+          </div>
+        </div>
+
+        <ShengsuanyunAuthSection />
+      </section>
+
+      <section className="rounded-xl border border-border/60 bg-card/60 p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -68,28 +90,6 @@ export function AuthCenterPanel({ authScrollTarget }: AuthCenterPanelProps) {
             {t("settings.authCenter.beta", { defaultValue: "Beta" })}
           </Badge>
         </div>
-      </section>
-
-      <section className="scroll-mt-4 rounded-xl border border-border/60 bg-card/60 p-6">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-            <ProviderIcon icon="shengsuanyun" name="shengsuanyun" size={20} />
-          </div>
-          <div>
-            <h4 className="font-medium">
-              {t("settings.authCenter.shengsuanyunTitle", {
-                defaultValue: "胜算云",
-              })}
-            </h4>
-            <p className="text-sm text-muted-foreground">
-              {t("settings.authCenter.shengsuanyunDescription", {
-                defaultValue: "一键登录胜算云，自动绑定 API Key",
-              })}
-            </p>
-          </div>
-        </div>
-
-        <ShengsuanyunAuthSection />
       </section>
 
       <section

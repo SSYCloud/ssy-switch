@@ -16,6 +16,7 @@
     "settings": "Settings",
     "docsCenter": "Docs",
     "personalCenter": "Account",
+    "accountLogin": "Sign in",
     "about": "About",
     "version": "Version",
     "loading": "Loading...",
@@ -345,7 +346,7 @@
     "title": "Settings",
     "general": "General",
     "tabGeneral": "General",
-    "tabAuth": "Auth",
+    "tabAuth": "Login / Auth",
     "tabAdvanced": "Advanced",
     "tabProxy": "Routing",
     "authCenter": {

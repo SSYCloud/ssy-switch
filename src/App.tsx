@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -31,6 +31,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  shengsuanyunApi,
+  type ShengsuanyunAccount,
+} from "@/lib/api/shengsuanyun";
 import type { Provider, VisibleApps } from "@/types";
 import type { EnvConflict } from "@/types/env";
 import { proxyKeys, useProvidersQuery, useSettingsQuery } from "@/lib/query";
@@ -186,6 +190,32 @@ function App() {
   const [skillsDiscoverySource, setSkillsDiscoverySource] =
     useState<SkillsPageSource>("repos");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
+
+  // 胜算云登录态：顶栏个人中心按钮未登录显示"账号登录"，登录后显示昵称
+  const [ssyAccount, setSsyAccount] = useState<ShengsuanyunAccount | null>(
+    null,
+  );
+  const refreshSsyAccount = useCallback(async () => {
+    try {
+      const accounts = await shengsuanyunApi.listAccounts();
+      setSsyAccount(accounts[0] ?? null);
+    } catch {
+      /* Tauri IPC 不可用（纯浏览器调试）时不显示登录态 */
+    }
+  }, []);
+  useEffect(() => {
+    void refreshSsyAccount();
+    const off = window.setInterval(() => void refreshSsyAccount(), 30_000);
+    const onFocus = () => void refreshSsyAccount();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(off);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshSsyAccount]);
+  useTauriEvent("shengsuanyun-oauth-complete", () => {
+    void refreshSsyAccount();
+  });
 
   // 埋点：切换 App
   useEffect(() => {
@@ -1392,11 +1422,17 @@ function App() {
                     setSettingsDefaultTab("auth");
                     setCurrentView("settings");
                   }}
-                  title={t("common.personalCenter")}
+                  title={
+                    ssyAccount ? t("common.personalCenter") : t("common.accountLogin")
+                  }
                   className="h-9 gap-1.5 px-3 hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <User className="w-4 h-4" />
-                  {t("common.personalCenter")}
+                  <span className="max-w-[10rem] truncate">
+                    {ssyAccount
+                      ? (ssyAccount.displayName || ssyAccount.uidMasked)
+                      : t("common.accountLogin")}
+                  </span>
                 </Button>
                 <UpdateBadge
                   onClick={() => {

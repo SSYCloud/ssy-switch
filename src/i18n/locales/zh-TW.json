@@ -16,6 +16,7 @@
     "settings": "設定",
     "docsCenter": "文檔",
     "personalCenter": "個人中心",
+    "accountLogin": "帳號登入",
     "about": "關於",
     "version": "版本",
     "loading": "載入中...",
@@ -345,7 +346,7 @@
     "title": "設定",
     "general": "通用",
     "tabGeneral": "通用",
-    "tabAuth": "驗證",
+    "tabAuth": "登入/驗證",
     "tabAdvanced": "進階",
     "tabProxy": "路由",
     "authCenter": {

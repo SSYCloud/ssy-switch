@@ -1,5 +1,5 @@
 import React from "react";
-import { RefreshCw, AlertCircle, Clock, Wallet } from "lucide-react";
+import { RefreshCw, AlertCircle, Clock, Wallet, LogIn } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { type AppId } from "@/lib/api";
 import { useUsageQuery } from "@/lib/query/queries";
@@ -10,6 +10,9 @@ import { isAdditiveAppId } from "@/config/appConfig";
 import { settingsApi } from "@/lib/api/settings";
 import { SSY_RECHARGE_URL } from "@/config/constants";
 import { analyticsApi } from "@/lib/api/analytics";
+import { shengsuanyunApi } from "@/lib/api/shengsuanyun";
+import { startLoginFlow } from "@/lib/shengsuanyunFlow";
+import { useTauriEvent } from "@/hooks/useTauriEvent";
 import {
   markRechargeOpened,
   shouldRefreshOnFocus,
@@ -101,6 +104,27 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   const isTokenPlan =
     provider.meta?.usage_script?.templateType === "token_plan";
 
+  // 胜算云登录态：未登录时余额区改为"请先登录"入口（点击复用登录横幅的 OAuth 流程）。
+  // null 表示尚未确认（IPC 不可用/加载中），此时按已登录处理避免闪断余额显示。
+  const [ssyLoggedIn, setSsyLoggedIn] = React.useState<boolean | null>(null);
+  const checkSsyLogin = React.useCallback(async () => {
+    try {
+      const accounts = await shengsuanyunApi.listAccounts();
+      setSsyLoggedIn(accounts.length > 0);
+    } catch {
+      /* 纯浏览器调试等场景：保持 null */
+    }
+  }, []);
+  React.useEffect(() => {
+    if (!isSsy) return;
+    void checkSsyLogin();
+    const off = window.setInterval(() => void checkSsyLogin(), 30_000);
+    return () => window.clearInterval(off);
+  }, [isSsy, checkSsyLogin]);
+  useTauriEvent("shengsuanyun-oauth-complete", () => {
+    if (isSsy) void checkSsyLogin();
+  });
+
   // 统一的用量查询（自动查询仅对当前激活的供应商启用）
   // 累加模式：使用 isInConfig 代替 isCurrent
   const shouldAutoQuery = isAdditiveAppId(appId) ? isInConfig : isCurrent;
@@ -115,7 +139,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
     lastQueriedAt,
     refetch,
   } = useUsageQuery(providerId, appId, {
-    enabled: usageEnabled,
+    enabled: usageEnabled && (!isSsy || ssyLoggedIn !== false),
     autoQueryInterval,
   });
 
@@ -151,7 +175,47 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   // 只在启用用量查询且有数据时显示。后端把瞬时传输失败转成了 reject：有缓存
   // 成功值时 react-query 保留 data 照常展示；首次查询就失败则 data 为空——
   // 此时（isError）仍要渲染失败态给出重试入口，否则 footer 整体消失、无从重查。
-  if (!usageEnabled || (!usage && !isError)) return null;
+  if (!usageEnabled) return null;
+
+  // 胜算云未登录：不显示"剩余 0.00"误导信息，改为登录入口（与登录横幅同一 OAuth 流程：
+  // 浏览器完成授权后自动绑定 Key，并跳转 设置→登录/认证 展示进度）
+  if (isSsy && ssyLoggedIn === false) {
+    const startSsyLogin = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      void startLoginFlow(appId, "usage_card").catch((err) =>
+        console.error("start shengsuanyun login failed", err),
+      );
+      window.dispatchEvent(
+        new CustomEvent("ssy-open-auth", { detail: { appId } }),
+      );
+    };
+    if (inline) {
+      return (
+        <button
+          onClick={startSsyLogin}
+          className="flex items-center gap-1 px-1.5 py-1 rounded text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors flex-shrink-0 whitespace-nowrap"
+          title={t("shengsuanyun.pleaseLogin", { defaultValue: "请先登录" })}
+        >
+          <LogIn size={12} />
+          {t("shengsuanyun.pleaseLogin", { defaultValue: "请先登录" })}
+        </button>
+      );
+    }
+    return (
+      <div className="mt-3 rounded-xl border border-border-default bg-card px-4 py-3 shadow-sm">
+        <button
+          onClick={startSsyLogin}
+          className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded px-1.5 py-1 transition-colors"
+          title={t("shengsuanyun.pleaseLogin", { defaultValue: "请先登录" })}
+        >
+          <LogIn size={14} />
+          {t("shengsuanyun.pleaseLogin", { defaultValue: "请先登录" })}
+        </button>
+      </div>
+    );
+  }
+
+  if (!usage && !isError) return null;
 
   // 错误状态（业务失败，或无缓存成功值的 reject）
   if (!usage || !usage.success) {

@@ -23,7 +23,8 @@ test-hooks = []
 tauri-build = { version = "2.4.0", features = [] }
 
 [dependencies]
-ssy-core = { path = "../crates/ssy-core" }
+# 档位2：SDK 独立仓库。建好远端后把 file:// 换成正式 URL（如 https://github.com/shengsuanyun/ssy-core-rs）
+ssy-core = { git = "file:///Users/Admin/projects/ssy-core-rs", tag = "v0.1.0" }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"

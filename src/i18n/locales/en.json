@@ -3336,6 +3336,7 @@
     "payWechat": "WeChat Pay",
     "payAlipay": "Alipay",
     "loadMore": "Load more",
-    "modalityUsage": "Multimodal usage (image/video)"
+    "modalityUsage": "Multimodal usage (image/video)",
+    "belowMinimum": "Below the minimum recharge amount of ¥30"
   }
 }

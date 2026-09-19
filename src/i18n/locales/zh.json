@@ -3336,6 +3336,7 @@
     "payWechat": "微信支付",
     "payAlipay": "支付宝",
     "loadMore": "加载更多",
-    "modalityUsage": "多模态调用（图片/视频）"
+    "modalityUsage": "多模态调用（图片/视频）",
+    "belowMinimum": "低于最低充值金额 ¥30"
   }
 }

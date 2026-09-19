@@ -119,14 +119,36 @@ pub async fn shengsuanyun_bill_list(
         .await
 }
 
-/// 多模态调用统计（按日/按模型；单位 1e-7 元）。
+/// 多模态调用统计（金额已在命令层换算为元，前端零业务计算）。
 #[tauri::command(rename_all = "camelCase")]
 pub async fn shengsuanyun_modality_usage(
     state: State<'_, ShengsuanyunState>,
     start_date: String,
     end_date: String,
 ) -> Result<serde_json::Value, String> {
-    state.manager.modality_usage(&start_date, &end_date).await
+    const AMOUNT_DIVISOR: f64 = 10_000_000.0; // 1e-7 元
+    let raw = state.manager.modality_usage(&start_date, &end_date).await?;
+    let mut usages = Vec::new();
+    if let Some(list) = raw.pointer("/usages").and_then(serde_json::Value::as_array) {
+        for u in list {
+            let date = u
+                .get("date")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let mut details = Vec::new();
+            if let Some(ds) = u.get("details").and_then(serde_json::Value::as_array) {
+                for d in ds {
+                    details.push(serde_json::json!({
+                        "model": d.get("model").cloned().unwrap_or_default(),
+                        "amount_yuan": d.get("total_amount").and_then(serde_json::Value::as_f64).unwrap_or(0.0)
+                            / AMOUNT_DIVISOR,
+                    }));
+                }
+            }
+            usages.push(serde_json::json!({ "date": date, "details": details }));
+        }
+    }
+    Ok(serde_json::json!({ "usages": usages }))
 }
 
 /// 调用统计结论（规则层聚合，金额单位元；模板直接渲染，前端零业务计算）。

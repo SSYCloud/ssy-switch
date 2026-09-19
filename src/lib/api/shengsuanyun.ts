@@ -177,7 +177,7 @@ export function getVoucherList(): Promise<{
 }
 
 export interface ModalityUsageResponse {
-  usages: { date: string; details: { model: string; total_amount: number }[] }[];
+  usages: { date: string; details: { model: string; amount_yuan: number }[] }[];
   total: number;
 }
 

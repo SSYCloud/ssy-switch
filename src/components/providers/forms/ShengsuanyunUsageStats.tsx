@@ -194,7 +194,7 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
                         </td>
                         <td className="py-1 pr-2">{d.model}</td>
                         <td className="py-1 text-right tabular-nums">
-                          ¥{(d.total_amount / 10_000_000).toFixed(4)}
+                          ¥{(d.amount_yuan).toFixed(4)}
                         </td>
                       </tr>
                     )),

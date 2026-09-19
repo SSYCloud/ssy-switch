@@ -27,13 +27,21 @@ import {
 type Phase = "idle" | "pending" | "error";
 
 /** 胜算云错误分类（立项 P0 错误诊断映射） */
-type SsyErrorKind = "insufficient" | "relogin" | "ratelimit" | "upstream" | "unknown";
+type SsyErrorKind =
+  | "insufficient"
+  | "relogin"
+  | "ratelimit"
+  | "upstream"
+  | "below_min"
+  | "unknown";
 function classifySsyError(error: unknown): SsyErrorKind {
   const raw = String(error);
   if (/402|insufficient|余额不足/i.test(raw)) return "insufficient";
   if (/401|token invalid|token expired|unauthorized|凭据失效/i.test(raw)) return "relogin";
   if (/429|rate limit/i.test(raw)) return "ratelimit";
-  if (/5\d\d|bad gateway|service unavailable|暂时不可用/i.test(raw)) return "upstream";
+  if (raw.includes("70002")) return "below_min";
+  if (/(^|\D)5\d\d($|\D)|bad gateway|service unavailable|暂时不可用/i.test(raw))
+    return "upstream";
   return "unknown";
 }
 
@@ -275,6 +283,13 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             defaultValue: "胜算云服务暂时不可用，请稍后重试",
           }),
           action: null,
+        };
+      case "below_min":
+        return {
+          text: t("shengsuanyun.belowMinimum", {
+            defaultValue: "低于最低充值金额 ¥30",
+          }),
+          action: "recharge",
         };
       default:
         return { text: error, action: null };

@@ -92,6 +92,14 @@ pub trait LoginEvents: Send + Sync {
 | schema v21 的 uid 迁移属壳层 | 留壳不动 |
 | 前端组件强耦合 CC Switch 表单体系 | 组件不抽；抽的只有 API 类型层（可选）|
 
+## 6b. 档位 2 执行记录（2026-09-19）
+
+- ✅ SDK 已物理独立：`~/projects/ssy-core-rs`（本地 git 仓库，tag `v0.1.0`）
+- ✅ cc-switch 通过 `file:///Users/Admin/projects/ssy-core-rs` git 依赖 + tag 引用
+- ⏳ 待办：建远端仓库后 `git push --tags`，并把 src-tauri/Cargo.toml 的
+  `file:///Users/Admin/projects/ssy-core-rs` 替换为正式 URL（一行）
+- 独立 CI 已含（.github/workflows/ci.yml：fmt/clippy/test --all-features）
+
 ## 7. 触发条件（满足其一）
 
 - [ ] 第二个消费方出现（Cline 插件后端 / 其他 Rust 工具）

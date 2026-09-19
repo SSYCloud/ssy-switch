@@ -39,9 +39,9 @@ function classifySsyError(error: unknown): SsyErrorKind {
   if (/402|insufficient|余额不足/i.test(raw)) return "insufficient";
   if (/401|token invalid|token expired|unauthorized|凭据失效/i.test(raw)) return "relogin";
   if (/429|rate limit/i.test(raw)) return "ratelimit";
-  if (raw.includes("70002")) return "below_min";
   if (/(^|\D)5\d\d($|\D)|bad gateway|service unavailable|暂时不可用/i.test(raw))
     return "upstream";
+  if (raw.includes("70002")) return "below_min";
   return "unknown";
 }
 

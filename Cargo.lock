@@ -5040,8 +5040,8 @@ dependencies = [
 
 [[package]]
 name = "ssy-core"
-version = "0.1.1"
-source = "git+file:///Users/Admin/projects/ssy-core-rs?tag=v0.1.1#413de925d1e7d034000f65a39257be48312ebb68"
+version = "0.1.2"
+source = "git+file:///Users/Admin/projects/ssy-core-rs?tag=v0.1.2#8e8ed0514ae7b9aed931419a2375de23b81d652b"
 dependencies = [
  "axum",
  "chrono",

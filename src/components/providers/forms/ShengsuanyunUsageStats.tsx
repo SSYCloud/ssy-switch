@@ -7,11 +7,10 @@ import { BarChart3, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   shengsuanyunApi,
-  type UserUsageResponse,
+  type UsageSummary,
   type ModalityUsageResponse,
 } from "@/lib/api/shengsuanyun";
 
-const AMOUNT_DIVISOR = 10_000_000; // 1e-7 元
 
 function fmtDate(d: Date): string {
   const y = d.getFullYear();
@@ -24,16 +23,10 @@ function daysAgo(n: number): string {
   return fmtDate(new Date(Date.now() - n * 86_400_000));
 }
 
-interface ModelTotal {
-  model: string;
-  amountYuan: number;
-  tokens: number;
-}
-
 export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<13 | 29>(13);
-  const [data, setData] = useState<UserUsageResponse | null>(null);
+  const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [modalities, setModalities] = useState<ModalityUsageResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,13 +35,13 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
     setLoading(true);
     setError(null);
     try {
-      const [usage, mods] = await Promise.all([
-        shengsuanyunApi.getUserUsage(daysAgo(r), daysAgo(0)),
+      const [sum, mods] = await Promise.all([
+        shengsuanyunApi.getUsageSummary(daysAgo(r), daysAgo(0)),
         shengsuanyunApi
           .getModalityUsage(daysAgo(r), daysAgo(0))
           .catch(() => null),
       ]);
-      setData(usage);
+      setSummary(sum);
       setModalities(mods);
     } catch (e) {
       setError(String(e));
@@ -61,31 +54,6 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
     void load(range);
   }, [range, load]);
 
-  const daily = (data?.usages ?? []).map((u) => ({
-    date: u.date.slice(0, 10),
-    amountYuan:
-      u.details.reduce((s, d) => s + d.total_amount, 0) / AMOUNT_DIVISOR,
-  }));
-  const maxDaily = Math.max(...daily.map((d) => d.amountYuan), 0.0001);
-
-  const modelTotals = new Map<string, ModelTotal>();
-  for (const u of data?.usages ?? []) {
-    for (const d of u.details) {
-      const cur = modelTotals.get(d.model) ?? {
-        model: d.model,
-        amountYuan: 0,
-        tokens: 0,
-      };
-      cur.amountYuan += d.total_amount / AMOUNT_DIVISOR;
-      cur.tokens += d.total_tokens;
-      modelTotals.set(d.model, cur);
-    }
-  }
-  const models = [...modelTotals.values()].sort(
-    (a, b) => b.amountYuan - a.amountYuan,
-  );
-  const grandTotal = models.reduce((s, m) => s + m.amountYuan, 0);
-  const grandTokens = models.reduce((s, m) => s + m.tokens, 0);
 
   return (
     <div className="mt-3 rounded-lg border border-border/60 p-4 text-sm">
@@ -136,21 +104,26 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
           <div className="mb-3 text-xs text-muted-foreground">
             {t("shengsuanyun.statsTotal", { defaultValue: "区间总消费" })}:{" "}
             <span className="font-semibold text-foreground">
-              ¥{grandTotal.toFixed(2)}
+              ¥{(summary?.total_yuan ?? 0).toFixed(2)}
             </span>
             {" · "}
             {t("shengsuanyun.statsTokens", { defaultValue: "总 tokens" })}:{" "}
-            {grandTokens.toLocaleString()}
+            {(summary?.total_tokens ?? 0).toLocaleString()}
           </div>
 
           {/* 按日消费条形图 */}
           <div className="mb-4 space-y-1.5">
-            {daily.length === 0 && (
+            {(!summary || summary.daily.length === 0) && (
               <p className="text-xs text-muted-foreground">
                 {t("shengsuanyun.noUsage", { defaultValue: "区间内无调用记录" })}
               </p>
             )}
-            {daily.map((d) => (
+            {(summary?.daily ?? []).map((d) => {
+              const maxDaily = Math.max(
+                ...(summary?.daily ?? []).map((x) => x.amount_yuan),
+                0.0001,
+              );
+              return (
               <div key={d.date} className="flex items-center gap-2 text-xs">
                 <span className="w-20 shrink-0 tabular-nums text-muted-foreground">
                   {d.date.slice(5)}
@@ -159,19 +132,20 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
                   <div
                     className="h-full rounded bg-emerald-500/70"
                     style={{
-                      width: `${Math.max(2, (d.amountYuan / maxDaily) * 100)}%`,
+                      width: `${Math.max(2, (d.amount_yuan / maxDaily) * 100)}%`,
                     }}
                   />
                 </div>
                 <span className="w-16 shrink-0 text-right tabular-nums">
-                  ¥{d.amountYuan.toFixed(2)}
+                  ¥{d.amount_yuan.toFixed(2)}
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* 按模型明细 */}
-          {models.length > 0 && (
+          {(summary?.models.length ?? 0) > 0 && (
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-muted-foreground">
@@ -187,14 +161,14 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
                 </tr>
               </thead>
               <tbody>
-                {models.map((m) => (
+                {(summary?.models ?? []).map((m) => (
                   <tr key={m.model} className="border-t border-border/40">
                     <td className="py-1 pr-2">{m.model}</td>
                     <td className="py-1 text-right tabular-nums">
                       {m.tokens.toLocaleString()}
                     </td>
                     <td className="py-1 text-right tabular-nums">
-                      ¥{m.amountYuan.toFixed(2)}
+                      ¥{m.amount_yuan.toFixed(2)}
                     </td>
                   </tr>
                 ))}

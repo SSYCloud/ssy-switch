@@ -129,6 +129,20 @@ pub async fn shengsuanyun_modality_usage(
     state.manager.modality_usage(&start_date, &end_date).await
 }
 
+/// 调用统计结论（规则层聚合，金额单位元；模板直接渲染，前端零业务计算）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_usage_summary(
+    state: State<'_, ShengsuanyunState>,
+    start_date: String,
+    end_date: String,
+) -> Result<ssy_core::rules::UsageSummary, String> {
+    state
+        .manager
+        .user_usage(&start_date, &end_date)
+        .await
+        .map(|raw| ssy_core::rules::summarize_usage(&raw))
+}
+
 /// 查询大模型调用记录（按日/按模型聚合；返回原始 JSON，单位 1e-7 元）。
 #[tauri::command(rename_all = "camelCase")]
 pub async fn shengsuanyun_user_usage(

@@ -115,6 +115,20 @@ export interface UserUsageResponse {
   usages: UsageDay[];
 }
 
+export interface UsageSummary {
+  daily: { date: string; amount_yuan: number; amountYuan?: number }[];
+  models: { model: string; amount_yuan: number; tokens: number }[];
+  total_yuan: number;
+  total_tokens: number;
+}
+
+export function getUsageSummary(
+  startDate: string,
+  endDate: string,
+): Promise<UsageSummary> {
+  return invoke("shengsuanyun_usage_summary", { startDate, endDate });
+}
+
 export function getUserUsage(
   startDate: string,
   endDate: string,
@@ -237,6 +251,7 @@ export const shengsuanyunApi = {
   getBinding: getShengsuanyunBinding,
   setBindingKey: setShengsuanyunBindingKey,
   getUserUsage,
+  getUsageSummary,
   getBillList,
   getModalityUsage,
   getVoucherList,

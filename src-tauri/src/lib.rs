@@ -1624,6 +1624,7 @@ pub fn run() {
             commands::analytics_track,
             commands::analytics_install_id,
             commands::shengsuanyun_user_usage,
+            commands::shengsuanyun_usage_summary,
             commands::shengsuanyun_bill_list,
             commands::shengsuanyun_modality_usage,
             commands::shengsuanyun_voucher_list,

@@ -7,8 +7,6 @@ import { UsageData, Provider } from "@/types";
 import { TierBadge } from "@/components/SubscriptionQuotaFooter";
 import type { QuotaTier } from "@/types/subscription";
 import { isAdditiveAppId } from "@/config/appConfig";
-import { settingsApi } from "@/lib/api/settings";
-import { SSY_RECHARGE_URL } from "@/config/constants";
 import { analyticsApi } from "@/lib/api/analytics";
 import { shengsuanyunApi } from "@/lib/api/shengsuanyun";
 import { startLoginFlow } from "@/lib/shengsuanyunFlow";
@@ -54,7 +52,7 @@ const RechargeButton: React.FC = () => {
         e.stopPropagation();
         markRechargeOpened();
         void analyticsApi.track("recharge_clicked", { entry: "card" }).catch(() => {});
-        void settingsApi.openExternal(SSY_RECHARGE_URL);
+        window.dispatchEvent(new CustomEvent("ssy-open-recharge"));
       }}
       className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors flex-shrink-0"
       title={t("shengsuanyun.recharge", { defaultValue: "充值" })}

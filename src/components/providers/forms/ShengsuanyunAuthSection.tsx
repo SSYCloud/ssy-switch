@@ -14,11 +14,9 @@ import {
 import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
 import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { analyticsApi } from "@/lib/api/analytics";
-import { settingsApi } from "@/lib/api/settings";
 import { ShengsuanyunUsageStats } from "./ShengsuanyunUsageStats";
 import { ShengsuanyunBillList } from "./ShengsuanyunBillList";
 import { ShengsuanyunVoucherList } from "./ShengsuanyunVoucherList";
-import { SSY_RECHARGE_URL } from "@/config/constants";
 import {
   markRechargeOpened,
   shouldRefreshOnFocus,
@@ -252,7 +250,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     try {
       markRechargeOpened();
       void analyticsApi.track("recharge_clicked", { entry: "auth_center" }).catch(() => {});
-      await settingsApi.openExternal(SSY_RECHARGE_URL);
+      window.dispatchEvent(new CustomEvent("ssy-open-recharge"));
     } catch (e) {
       setError(String(e));
     }

@@ -1,8 +1,9 @@
 // 应用内充值对话框（P2 本地支付，spec: docs/ssy-local-recharge-spec.md）。
 //
-// 由 App 根部挂载（单实例），入口通过 window 事件 'ssy-open-recharge' 打开。
-// 两个视图：金额/渠道选择 → 二维码（可返回重选）。
-// 支付渠道：支付宝（qr.alipay.com）/ 微信（weixin://wxpay/…），均已实测出码。
+// 交互模型：
+// - 表单视图（金额/渠道选择）→ 二维码视图（15 分钟倒计时，可返回重选）
+// - 二维码一次性使用：关闭弹窗即销毁订单，重新打开回到表单视图
+// - 支付渠道：支付宝 / 微信，均已在生产环境实测出码
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,6 +11,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Loader2,
+  Timer,
   Wallet,
   X,
 } from "lucide-react";
@@ -18,18 +20,25 @@ import { shengsuanyunApi } from "@/lib/api/shengsuanyun";
 import { settingsApi } from "@/lib/api/settings";
 
 const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_TRIES = 100;
 const CUSTOM_MIN = 30;
 const CUSTOM_MAX = 5000;
+const COUNTDOWN_SECS = 15 * 60; // 15 分钟
 
 type PayWay = "alipay" | "wechatpay";
+type Phase = "form" | "pending" | "paid" | "error";
 
 const TIER_AMOUNTS = [10, 30, 100, 200, 500];
 /** 档位金额（服务端套餐，含 ¥10）始终合法；非档位走自定义区间 30–5000 */
 const isValidAmount = (yuan: number): boolean =>
   TIER_AMOUNTS.includes(yuan) ||
   (yuan >= CUSTOM_MIN && yuan <= CUSTOM_MAX);
-type Phase = "form" | "pending" | "paid" | "error";
+
+/** 秒 → "mm:ss" */
+const fmtCountdown = (secs: number): string => {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
 
 export function ShengsuanyunRechargeDialog({
   open,
@@ -47,6 +56,7 @@ export function ShengsuanyunRechargeDialog({
   const [orderWay, setOrderWay] = useState<PayWay>("alipay");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECS);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopPoll = useCallback(() => {
@@ -56,16 +66,55 @@ export function ShengsuanyunRechargeDialog({
     }
   }, []);
 
+  // 关闭 = 销毁订单：重置全部状态，下次打开回到表单
+  const resetAndClose = useCallback(() => {
+    stopPoll();
+    setPhase("form");
+    setQrSrc("");
+    setError(null);
+    setCountdown(COUNTDOWN_SECS);
+    onClose();
+  }, [onClose, stopPoll]);
+
   useEffect(() => {
-    if (!open) stopPoll();
+    if (!open) {
+      stopPoll();
+      // 弹窗关闭时重置（订单销毁）
+      setPhase("form");
+      setQrSrc("");
+      setError(null);
+      setCountdown(COUNTDOWN_SECS);
+    }
     return stopPoll;
   }, [open, stopPoll]);
+
+  // 倒计时（仅 pending 态）
+  useEffect(() => {
+    if (phase !== "pending") return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          stopPoll();
+          setPhase("error");
+          setError(
+            t("shengsuanyun.qrExpired", {
+              defaultValue: "二维码已过期，请返回重新生成",
+            }),
+          );
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [phase, t, stopPoll]);
 
   const backToForm = useCallback(() => {
     stopPoll();
     setPhase("form");
     setQrSrc("");
     setError(null);
+    setCountdown(COUNTDOWN_SECS);
   }, [stopPoll]);
 
   const createAndPoll = useCallback(async () => {
@@ -73,6 +122,7 @@ export function ShengsuanyunRechargeDialog({
     setBusy(true);
     setPhase("pending");
     setError(null);
+    setCountdown(COUNTDOWN_SECS);
     setOrderAmount(amount);
     setOrderWay(payWay);
     try {
@@ -86,19 +136,10 @@ export function ShengsuanyunRechargeDialog({
           errorCorrectionLevel: "M",
         }),
       );
-      const loop = async (tries: number) => {
+      const loop = async () => {
         const s = await shengsuanyunApi.payStatus(o.order_id);
         if (s.status === "unpaid") {
-          if (tries >= POLL_MAX_TRIES) {
-            setPhase("error");
-            setError(
-              t("shengsuanyun.qrExpired", {
-                defaultValue: "二维码已过期，请返回重新生成",
-              }),
-            );
-            return;
-          }
-          pollRef.current = setTimeout(() => loop(tries + 1), POLL_INTERVAL_MS);
+          pollRef.current = setTimeout(loop, POLL_INTERVAL_MS);
           return;
         }
         setPhase("paid");
@@ -109,7 +150,7 @@ export function ShengsuanyunRechargeDialog({
             .catch(() => {});
         }
       };
-      await loop(0);
+      pollRef.current = setTimeout(loop, POLL_INTERVAL_MS);
     } catch (e) {
       setPhase("error");
       setError(String(e));
@@ -124,6 +165,8 @@ export function ShengsuanyunRechargeDialog({
     alipay: t("shengsuanyun.alipay", { defaultValue: "支付宝" }),
     wechatpay: t("shengsuanyun.wechatPay", { defaultValue: "微信支付" }),
   };
+
+  const countdownLow = countdown <= 60; // 最后 1 分钟变橙
 
   return (
     <div
@@ -156,10 +199,7 @@ export function ShengsuanyunRechargeDialog({
           <button
             aria-label={t("shengsuanyun.close", { defaultValue: "关闭" })}
             className="rounded p-1 hover:bg-muted"
-            onClick={() => {
-              stopPoll();
-              onClose();
-            }}
+            onClick={resetAndClose}
           >
             <X className="h-4 w-4" />
           </button>
@@ -247,10 +287,21 @@ export function ShengsuanyunRechargeDialog({
         {/* 二维码视图 */}
         {phase === "pending" && (
           <div className="grid place-items-center gap-3">
+            {/* 金额 + 渠道 */}
             <p className="text-2xl font-bold tabular-nums">
               ¥{orderAmount.toFixed(2)}
             </p>
-            <p className="text-xs text-muted-foreground">{wayLabel[orderWay]}</p>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                orderWay === "alipay"
+                  ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                  : "bg-green-500/10 text-green-600 dark:text-green-400"
+              }`}
+            >
+              {wayLabel[orderWay]}
+            </span>
+
+            {/* 二维码 */}
             <div
               className="rounded-lg border-2 border-border p-3"
               style={{ backgroundColor: "#ffffff" }}
@@ -266,14 +317,26 @@ export function ShengsuanyunRechargeDialog({
                 <Loader2 className="h-8 w-8 animate-spin" />
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {t("shengsuanyun.scanToPay", {
-                defaultValue: "请使用对应 App 扫码完成支付",
+
+            {/* 倒计时 */}
+            <p
+              className={`flex items-center gap-1.5 text-sm tabular-nums ${
+                countdownLow
+                  ? "font-semibold text-orange-500"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <Timer className="h-4 w-4" />
+              {t("shengsuanyun.countdown", {
+                defaultValue: "二维码 {{time}} 后过期",
+                time: fmtCountdown(countdown),
               })}
             </p>
-            <p className="text-xs text-muted-foreground/60">
-              {t("shengsuanyun.orderPending", {
-                defaultValue: "正在等待支付结果…",
+
+            <p className="text-xs text-muted-foreground">
+              {t("shengsuanyun.scanToPay", {
+                defaultValue: "请使用{{way}}扫码完成支付",
+                way: wayLabel[orderWay],
               })}
             </p>
           </div>
@@ -299,6 +362,7 @@ export function ShengsuanyunRechargeDialog({
               onClick={() => {
                 setPhase("form");
                 setQrSrc("");
+                setCountdown(COUNTDOWN_SECS);
               }}
             >
               {t("shengsuanyun.rechargeAgain", { defaultValue: "再充一笔" })}

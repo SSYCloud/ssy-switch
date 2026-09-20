@@ -3348,6 +3348,7 @@
     "rechargeAgain": "再充一笔",
     "backToSelect": "返回重选",
     "qrAlt": "收款码",
-    "orderPending": "正在等待支付结果…"
+    "orderPending": "正在等待支付结果…",
+    "countdown": "二维码 {{time}} 后过期"
   }
 }

@@ -3348,6 +3348,7 @@
     "rechargeAgain": "Recharge again",
     "backToSelect": "Back to selection",
     "qrAlt": "Payment QR code",
-    "orderPending": "Waiting for payment…"
+    "orderPending": "Waiting for payment…",
+    "countdown": "QR expires in {{time}}"
   }
 }

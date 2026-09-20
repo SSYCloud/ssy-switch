@@ -71,6 +71,7 @@ import {
 import { AppSwitcher } from "@/components/AppSwitcher";
 import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
 import { ProviderList } from "@/components/providers/ProviderList";
+import { ShengsuanyunRechargeDialog } from "@/components/providers/forms/ShengsuanyunRechargeDialog";
 import { AddProviderDialog } from "@/components/providers/AddProviderDialog";
 import { EditProviderDialog } from "@/components/providers/EditProviderDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -217,7 +218,15 @@ function App() {
     void refreshSsyAccount();
   });
 
-  // 埋点：切换 App
+  // 应用内充值对话框（全局单实例）
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setRechargeOpen(true);
+    window.addEventListener("ssy-open-recharge", open);
+    return () => window.removeEventListener("ssy-open-recharge", open);
+  }, []);
+
+  // 埋点：切换 App  // 埋点：切换 App
   useEffect(() => {
     void import("@/lib/api/analytics").then((m) =>
       m.analyticsApi.track("app_selected", { app: activeApp }).catch(() => {}),
@@ -1238,6 +1247,7 @@ function App() {
       className="flex flex-col h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30 pb-4"
       style={{ overflowX: "hidden", paddingTop: contentTopOffset }}
     >
+      <ShengsuanyunRechargeDialog open={rechargeOpen} onClose={() => setRechargeOpen(false)} />
       {(dragBarHeight > 0 || useAppWindowControls) && (
         <div
           className="fixed top-0 left-0 right-0 z-[70] flex items-center justify-end px-2"

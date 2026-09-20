@@ -129,6 +129,25 @@ export function getUsageSummary(
   return invoke("shengsuanyun_usage_summary", { startDate, endDate });
 }
 
+export type PaymentStatus = "unpaid" | "paid" | "unknown";
+
+export interface RechargeOrder {
+  url: string;
+  order_id: string;
+}
+
+export function createRechargeOrder(yuan: number): Promise<RechargeOrder> {
+  return invoke("shengsuanyun_create_recharge_order", { yuan });
+}
+
+export function payStatus(orderId: string): Promise<PaymentStatusResult> {
+  return invoke("shengsuanyun_pay_status", { orderId });
+}
+
+export interface PaymentStatusResult {
+  status: PaymentStatus;
+}
+
 export function getUserUsage(
   startDate: string,
   endDate: string,
@@ -254,5 +273,7 @@ export const shengsuanyunApi = {
   getUsageSummary,
   getBillList,
   getModalityUsage,
+  createRechargeOrder,
+  payStatus,
   getVoucherList,
 };

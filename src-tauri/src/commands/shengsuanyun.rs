@@ -151,7 +151,27 @@ pub async fn shengsuanyun_modality_usage(
     Ok(serde_json::json!({ "usages": usages }))
 }
 
-/// 调用统计结论（规则层聚合，金额单位元；模板直接渲染，前端零业务计算）。
+/// 创建应用内充值订单（返回收款码链接与服务端订单号；金额单位元）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_create_recharge_order(
+    state: State<'_, ShengsuanyunState>,
+    yuan: f64,
+) -> Result<serde_json::Value, String> {
+    let (url, order_id) = state.manager.create_recharge_order(yuan).await?;
+    Ok(serde_json::json!({ "url": url, "order_id": order_id }))
+}
+
+/// 查询充值订单支付状态（规则层结论：unpaid/paid/unknown）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_pay_status(
+    state: State<'_, ShengsuanyunState>,
+    order_id: String,
+) -> Result<serde_json::Value, String> {
+    let status = state.manager.pay_status(&order_id).await;
+    Ok(serde_json::json!({ "status": status }))
+}
+
+/// 调用统计结论（规则层聚合，金额单位元；模板直接渲染，前端零业务计算）。/// 调用统计结论（规则层聚合，金额单位元；模板直接渲染，前端零业务计算）。
 #[tauri::command(rename_all = "camelCase")]
 pub async fn shengsuanyun_usage_summary(
     state: State<'_, ShengsuanyunState>,

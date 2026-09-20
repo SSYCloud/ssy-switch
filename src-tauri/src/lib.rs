@@ -1623,6 +1623,8 @@ pub fn run() {
             commands::ccswitch_import_execute,
             commands::analytics_track,
             commands::analytics_install_id,
+            commands::shengsuanyun_create_recharge_order,
+            commands::shengsuanyun_pay_status,
             commands::shengsuanyun_user_usage,
             commands::shengsuanyun_usage_summary,
             commands::shengsuanyun_bill_list,

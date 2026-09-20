@@ -3337,6 +3337,17 @@
     "payAlipay": "Alipay",
     "loadMore": "Load more",
     "modalityUsage": "Multimodal usage (image/video)",
-    "belowMinimum": "Below the minimum recharge amount of ¥30"
+    "belowMinimum": "Below the minimum recharge amount of ¥30",
+    "alipay": "Alipay",
+    "wechatPay": "WeChat Pay",
+    "payMethod": "Payment Method",
+    "back": "Back to selection",
+    "scanPayTitle": "Scan to Pay",
+    "rechargeDone": "Recharge Complete",
+    "balanceRefreshed": "Balance refreshed automatically",
+    "rechargeAgain": "Recharge again",
+    "backToSelect": "Back to selection",
+    "qrAlt": "Payment QR code",
+    "orderPending": "Waiting for payment…"
   }
 }

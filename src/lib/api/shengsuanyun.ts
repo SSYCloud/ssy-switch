@@ -136,8 +136,14 @@ export interface RechargeOrder {
   order_id: string;
 }
 
-export function createRechargeOrder(yuan: number): Promise<RechargeOrder> {
-  return invoke("shengsuanyun_create_recharge_order", { yuan });
+export function createRechargeOrder(
+  yuan: number,
+  payWay?: "alipay" | "wechatpay",
+): Promise<RechargeOrder> {
+  return invoke("shengsuanyun_create_recharge_order", {
+    yuan,
+    payWay: payWay ?? "alipay",
+  });
 }
 
 export function payStatus(orderId: string): Promise<PaymentStatusResult> {

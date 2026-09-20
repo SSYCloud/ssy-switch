@@ -156,8 +156,10 @@ pub async fn shengsuanyun_modality_usage(
 pub async fn shengsuanyun_create_recharge_order(
     state: State<'_, ShengsuanyunState>,
     yuan: f64,
+    pay_way: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let (url, order_id) = state.manager.create_recharge_order(yuan).await?;
+    let way = pay_way.unwrap_or_else(|| "alipay".to_string());
+    let (url, order_id) = state.manager.create_recharge_order(yuan, &way).await?;
     Ok(serde_json::json!({ "url": url, "order_id": order_id }))
 }
 

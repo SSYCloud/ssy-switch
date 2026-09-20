@@ -51,7 +51,14 @@ export function ShengsuanyunRechargeDialog({
     try {
       const o = await shengsuanyunApi.createRechargeOrder(amount);
       const { toDataURL } = await import("qrcode");
-      setQrSrc(await toDataURL(o.url, { width: 180, margin: 1 }));
+      setQrSrc(
+        await toDataURL(o.url, {
+          width: 180,
+          margin: 1,
+          color: { dark: "#000000ff", light: "#ffffffff" },
+          errorCorrectionLevel: "M",
+        }),
+      );
       const loop = async (tries: number) => {
         const s = await shengsuanyunApi.payStatus(o.order_id);
         if (s.status === "unpaid") {
@@ -140,7 +147,7 @@ export function ShengsuanyunRechargeDialog({
 
         {phase === "pending" && (
           <div className="mt-4 grid place-items-center gap-2">
-            <div className="rounded-lg border border-border bg-white p-2">
+            <div className="rounded-lg border border-border bg-white p-2" style={{ backgroundColor: "#ffffff" }}>
               {qrSrc ? (
                 <img alt="QR" src={qrSrc} width={180} height={180} />
               ) : (

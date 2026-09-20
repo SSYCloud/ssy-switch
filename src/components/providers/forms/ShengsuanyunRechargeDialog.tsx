@@ -23,6 +23,12 @@ const CUSTOM_MIN = 30;
 const CUSTOM_MAX = 5000;
 
 type PayWay = "alipay" | "wechatpay";
+
+const TIER_AMOUNTS = [10, 30, 100, 200, 500];
+/** 档位金额（服务端套餐，含 ¥10）始终合法；非档位走自定义区间 30–5000 */
+const isValidAmount = (yuan: number): boolean =>
+  TIER_AMOUNTS.includes(yuan) ||
+  (yuan >= CUSTOM_MIN && yuan <= CUSTOM_MAX);
 type Phase = "form" | "pending" | "paid" | "error";
 
 export function ShengsuanyunRechargeDialog({
@@ -163,7 +169,7 @@ export function ShengsuanyunRechargeDialog({
         {phase === "form" && (
           <>
             <div className="mb-3 grid grid-cols-5 gap-2">
-              {[10, 30, 100, 200, 500].map((v) => (
+              {TIER_AMOUNTS.map((v) => (
                 <button
                   key={v}
                   className={`rounded-lg border px-2 py-3 text-center text-sm transition-colors ${
@@ -222,7 +228,7 @@ export function ShengsuanyunRechargeDialog({
 
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-500"
-              disabled={busy || !(amount >= CUSTOM_MIN && amount <= CUSTOM_MAX)}
+              disabled={busy || !isValidAmount(amount)}
               onClick={() => void createAndPoll()}
             >
               {busy ? (
@@ -231,7 +237,7 @@ export function ShengsuanyunRechargeDialog({
                 <Wallet className="mr-2 h-4 w-4" />
               )}
               {t("shengsuanyun.rechargeNow", {
-                defaultValue: "确认充值 ¥{amount}",
+                defaultValue: "确认充值 ¥{{amount}}",
                 amount,
               })}
             </Button>

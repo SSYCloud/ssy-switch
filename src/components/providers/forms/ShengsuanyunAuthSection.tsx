@@ -113,6 +113,21 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     }
   }, [reload]);
 
+  // 登录 pending 态 2 分钟自动超时提示（后端 60s 超时兜底，前端更宽松）
+  useEffect(() => {
+    if (phase !== "pending") return;
+    const timer = setTimeout(() => {
+      setPhase("error");
+      setError(
+        t("shengsuanyun.loginTimeout", {
+          defaultValue:
+            "登录超时（2 分钟无响应）。请关闭浏览器授权页后重试；若反复失败请检查网络代理设置。",
+        }),
+      );
+    }, 120_000);
+    return () => clearTimeout(timer);
+  }, [phase, t]);
+
   useEffect(() => {
     void reload();
     // 登录流程由全局桥发起（横幅/本面板/深链共用）：这里只跟进 pending 态

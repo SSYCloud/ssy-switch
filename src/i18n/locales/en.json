@@ -3349,6 +3349,7 @@
     "backToSelect": "Back to selection",
     "qrAlt": "Payment QR code",
     "orderPending": "Waiting for payment…",
-    "countdown": "QR expires in {{time}}"
+    "countdown": "QR expires in {{time}}",
+    "loginTimeout": "Login timed out (no response in 2 minutes). Close the browser auth page and retry; if it persists, check your proxy settings."
   }
 }

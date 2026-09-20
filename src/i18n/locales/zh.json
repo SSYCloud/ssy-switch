@@ -3349,6 +3349,7 @@
     "backToSelect": "返回重选",
     "qrAlt": "收款码",
     "orderPending": "正在等待支付结果…",
-    "countdown": "二维码 {{time}} 后过期"
+    "countdown": "二维码 {{time}} 后过期",
+    "loginTimeout": "登录超时（2 分钟无响应）。请关闭浏览器授权页后重试；若反复失败请检查网络代理设置。"
   }
 }

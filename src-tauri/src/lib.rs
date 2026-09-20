@@ -35,7 +35,7 @@ mod proxy;
 mod services;
 mod session_manager;
 mod settings;
-mod shengsuanyun;
+pub mod shengsuanyun;
 mod store;
 
 mod tray;

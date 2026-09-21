@@ -1675,6 +1675,14 @@ impl Database {
         if !Self::table_exists(conn, "shengsuanyun_accounts")? {
             return Ok(());
         }
+        // 旧表可能早于 voucher_assets 引入（v18/v19 时期的库），先幂等补列，
+        // 下面的 INSERT…SELECT 才能统一按含该列的形状复制。
+        Self::add_column_if_missing(
+            conn,
+            "shengsuanyun_accounts",
+            "voucher_assets",
+            "INTEGER",
+        )?;
         conn.execute("DROP TABLE IF EXISTS shengsuanyun_accounts_v21", [])?;
         conn.execute(
             "CREATE TABLE shengsuanyun_accounts_v21 (
@@ -1685,6 +1693,7 @@ impl Database {
                 avatar_url TEXT NOT NULL DEFAULT '',
                 is_creator INTEGER NOT NULL DEFAULT 0,
                 balance_assets INTEGER,
+                voucher_assets INTEGER,
                 balance_updated_at INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
@@ -1694,9 +1703,9 @@ impl Database {
         conn.execute(
             "INSERT OR IGNORE INTO shengsuanyun_accounts_v21
                (id, uid, display_name, email, avatar_url, is_creator,
-                balance_assets, balance_updated_at, created_at, updated_at)
+                balance_assets, voucher_assets, balance_updated_at, created_at, updated_at)
              SELECT id, uid, display_name, email, avatar_url, is_creator,
-                    balance_assets, balance_updated_at, created_at, updated_at
+                    balance_assets, voucher_assets, balance_updated_at, created_at, updated_at
                FROM shengsuanyun_accounts",
             [],
         )?;
@@ -1722,9 +1731,14 @@ impl Database {
         Ok(())
     }
 
-    /// SSY-Switch: 埋点事件队列（本地缓存，批量上报；不上传任何敏感字段）
-    /// 存量库补列：shengsuanyun_accounts.voucher_assets（体验券余额缓存）
-    fn ensure_shengsuanyun_voucher_column(conn: &Connection) -> Result<(), AppError> {
+    /// SSY-Switch: 存量库补列：shengsuanyun_accounts.voucher_assets（体验券余额缓存）。
+    ///
+    /// 必须在迁移链**之后**也执行一次：新装库的建表先带出该列，但 v20→v21
+    /// 表重建（2026-09-16 事故修复）的列清单在 voucher_assets 引入前定稿，
+    /// 走完整迁移链的库会在补列之后重建表并丢掉该列，导致首登 upsert 报
+    /// "no column named voucher_assets"（2026-09-21 新用户装机实锤）。
+    /// 迁移后幂等补一次，同时修复未来同类漂移与已损坏的存量 v21 库。
+    pub(crate) fn ensure_shengsuanyun_voucher_column(conn: &Connection) -> Result<(), AppError> {
         if Self::table_exists(conn, "shengsuanyun_accounts")? {
             Self::add_column_if_missing(
                 conn,
@@ -3707,6 +3721,66 @@ mod tests {
         )?;
         assert_eq!(log_default, 1);
 
+        Ok(())
+    }
+
+    #[test]
+    fn fresh_install_full_chain_preserves_voucher_assets() -> Result<(), AppError> {
+        // 复刻 Database::new 的建表→迁移顺序（新装库 user_version 从 0 走完整链）。
+        // 2026-09-21 事故：v20→v21 表重建列清单缺 voucher_assets，重建发生在
+        // 建表补列之后，把列毁掉 → 首登 upsert 报 no column named voucher_assets。
+        let conn = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&conn)?;
+        // 预置一行带 voucher 值，验证重建时数据不丢
+        conn.execute(
+            "INSERT INTO shengsuanyun_accounts
+             (id, uid, display_name, voucher_assets, created_at, updated_at)
+             VALUES ('acct-1', '62890', 'tester', 12345, 1, 1)",
+            [],
+        )?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert!(Database::has_column(
+            &conn,
+            "shengsuanyun_accounts",
+            "voucher_assets"
+        )?);
+        let voucher: Option<i64> = conn.query_row(
+            "SELECT voucher_assets FROM shengsuanyun_accounts WHERE id = 'acct-1'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(voucher, Some(12345));
+        Ok(())
+    }
+
+    #[test]
+    fn post_migration_ensure_repairs_broken_v21_db() -> Result<(), AppError> {
+        // 已损坏的存量 v21 库（v21 重建丢列后落盘）：迁移链不会重跑，
+        // 靠 Database::new 迁移后的幂等补列自愈。
+        let conn = Connection::open_in_memory()?;
+        conn.execute(
+            "CREATE TABLE shengsuanyun_accounts (
+                id TEXT PRIMARY KEY, uid TEXT NOT NULL,
+                display_name TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '',
+                is_creator INTEGER NOT NULL DEFAULT 0, balance_assets INTEGER,
+                balance_updated_at INTEGER, created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        Database::set_user_version(&conn, 21)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        Database::ensure_shengsuanyun_voucher_column(&conn)?;
+
+        assert!(Database::has_column(
+            &conn,
+            "shengsuanyun_accounts",
+            "voucher_assets"
+        )?);
         Ok(())
     }
 

@@ -142,6 +142,14 @@ impl Database {
         }
 
         db.apply_schema_migrations()?;
+        // SSY-Switch（2026-09-21 修复）：迁移链后幂等补列。新装库会走完整
+        // v0→v21 链，其中 v20→v21 表重建曾丢掉 voucher_assets（列清单定稿早于
+        // 该列引入），必须在建表补列之外、迁移之后再补一次；同时自愈已损坏的
+        // 存量 v21 库。详见 ensure_shengsuanyun_voucher_column 的注释。
+        {
+            let conn = lock_conn!(db.conn);
+            Self::ensure_shengsuanyun_voucher_column(&conn)?;
+        }
         if let Err(e) = db.ensure_incremental_auto_vacuum() {
             log::warn!("Failed to ensure incremental auto-vacuum: {e}");
         }

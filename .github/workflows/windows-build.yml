@@ -1,0 +1,89 @@
+name: Windows Build
+
+# SSY-Switch：无签名 secrets 的 Windows 构建入口。
+# 上游 release.yml 依赖 Tauri 签名/Apple 公证等组织未配置的 secrets，触发即挂，
+# 其 tag 推送触发已禁用；本工作流按需手动派发，产物附加到对应 Release。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要构建并附加产物的 release tag（也用于 checkout）'
+        required: true
+        default: 'v3.20.2-ssy.2'
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          corepack install
+          node --version
+          pnpm --version
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri App (Windows x64)
+        shell: pwsh
+        run: pnpm tauri build
+
+      - name: Collect assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          $msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -ne $msi) {
+            Copy-Item $msi.FullName release-assets/
+            Write-Host "MSI: $($msi.Name)"
+          } else {
+            Write-Warning 'No MSI found'
+          }
+          $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter *.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -ne $nsis) {
+            Copy-Item $nsis.FullName release-assets/
+            Write-Host "NSIS: $($nsis.Name)"
+          } else {
+            Write-Warning 'No NSIS setup exe found'
+          }
+          Get-ChildItem release-assets | ForEach-Object { ($_ | Get-FileHash -Algorithm SHA256).Hash + '  ' + $_.Name } | Set-Content release-assets/SHA256SUMS.txt
+          Get-Content release-assets/SHA256SUMS.txt
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-x64-assets
+          path: release-assets/*
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ inputs.tag }}"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY | Out-Null
+          gh release upload $tag (Get-ChildItem release-assets -File | Select-Object -ExpandProperty FullName) --clobber --repo $env:GITHUB_REPOSITORY
+          Write-Host "Attached to release $tag"

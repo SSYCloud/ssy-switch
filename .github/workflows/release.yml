@@ -1,9 +1,9 @@
 name: Release
 
+# SSY-Switch：此工作流依赖上游组织的签名 secrets（Tauri 签名密钥、Apple 证书等），
+# 本组织未配置，tag 推送触发已禁用（2026-09-22）。按需构建请用 windows-build.yml。
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write

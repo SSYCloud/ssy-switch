@@ -299,6 +299,22 @@ impl Database {
         Ok(changed > 0)
     }
 
+    /// 清理指定 app 下 provider_id 已不存在于 providers 表的幽灵绑定行
+    /// （常驻自愈重指向后，旧卡片 id 的绑定必须删掉，否则下次对账先命中幽灵行）。
+    /// 绑定表主键是 (app_type, provider_id)，upsert 新 id 不会覆盖旧行。
+    pub fn delete_stale_shengsuanyun_bindings(&self, app_type: &str) -> Result<usize, String> {
+        let conn = lock_conn!(self.conn);
+        let n = conn
+            .execute(
+                "DELETE FROM shengsuanyun_provider_bindings
+                 WHERE app_type = ?1
+                   AND provider_id NOT IN (SELECT id FROM providers WHERE app_type = ?1)",
+                params![app_type],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n)
+    }
+
     pub fn get_shengsuanyun_binding(
         &self,
         app_type: &str,

@@ -1655,3 +1655,14 @@ mod tests {
         );
     }
 }
+
+/// SSY-Switch：胜算云官方卡片识别（base URL 特征或名称匹配）。
+///
+/// 常驻保护（2026-09-22）的统一判定：live 反向导入/切换回填不得抹掉 SSY 卡片
+/// 配置、SSY 卡片不可删除、启动自愈按此识别。各调用点勿自行实现，以免判定漂移。
+pub fn is_shengsuanyun_provider(p: &Provider) -> bool {
+    p.settings_config
+        .to_string()
+        .contains("router.shengsuanyun.com")
+        || p.name.eq_ignore_ascii_case("shengsuanyun")
+}

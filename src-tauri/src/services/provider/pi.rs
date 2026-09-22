@@ -226,6 +226,18 @@ fn sync_native_locked(
     let mut changed = 0;
 
     for (id, config) in native {
+        // SSY 常驻保护：native 内容缺少胜算云配置时不反向覆盖 DB 卡片
+        //（与 live.rs 的 live_settings_would_lose_ssy 同一判定，Pi 无 live.rs 依赖）。
+        if let Some(existing) = saved.get(id) {
+            if crate::provider::is_shengsuanyun_provider(existing)
+                && !config.to_string().contains("router.shengsuanyun.com")
+            {
+                log::warn!(
+                    "Pi provider '{id}' 的 native 内容缺少胜算云配置，跳过反向覆盖以保护常驻卡片"
+                );
+                continue;
+            }
+        }
         let mut provider = saved.get(id).cloned().unwrap_or_else(|| {
             let name = native_provider_name(config).unwrap_or(id).to_string();
             let mut imported = Provider::with_id(id.clone(), name, config.clone(), None);

@@ -1310,6 +1310,14 @@ pub fn run() {
                             Err(e) => log::error!("SSY: {app_type} 用量脚本补填失败: {e}"),
                         }
                     }
+
+                    // 常驻保证（2026-09-22）：任一宿主下胜算云卡片缺失时按 preset
+                    // 重建（已登录则写入凭据并重指向 binding），只写 DB 不动 current。
+                    let recreated =
+                        commands::ensure_shengsuanyun_cards(app_state.inner());
+                    if recreated > 0 {
+                        log::info!("SSY 常驻自愈：重建了 {recreated} 张胜算云卡片");
+                    }
                 });
             }
 

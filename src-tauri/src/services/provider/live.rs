@@ -1045,11 +1045,32 @@ fn strip_injected_kimi_for_coding_context_defaults(settings: &mut Value, provide
     }
 }
 
+/// SSY 常驻卡片保护（2026-09-22 Windows 配置丢失事故）：DB 卡片是胜算云官方
+/// 配置、而来自 live 文件的内容已丢失胜算云特征（base URL 不在其中）→ 拒绝
+/// 反向覆盖。这类 live 内容多半是写入失败/被 CLI 重写后的残缺快照，照单全收
+/// 会把卡片里的 base URL 和 Key 抹掉；live 里仍有 base URL 的外部编辑不受影响。
+pub(crate) fn live_settings_would_lose_ssy(
+    existing: &Provider,
+    incoming: &serde_json::Value,
+) -> bool {
+    crate::provider::is_shengsuanyun_provider(existing)
+        && !incoming.to_string().contains("router.shengsuanyun.com")
+}
+
 fn restore_live_settings_for_provider_backfill(
     app_type: &AppType,
     provider: &Provider,
     live_settings: Value,
 ) -> Value {
+    // SSY 常驻保护：切换回填同样不能让残缺 live 快照抹掉胜算云卡片配置。
+    if live_settings_would_lose_ssy(provider, &live_settings) {
+        log::warn!(
+            "SSY 卡片 '{}' 的 live 快照缺少胜算云配置，跳过回填以保护卡片（app={}）",
+            provider.id,
+            app_type.as_str()
+        );
+        return provider.settings_config.clone();
+    }
     if matches!(app_type, AppType::Claude) {
         let mut settings = live_settings;
         strip_injected_codex_oauth_context_defaults(&mut settings, provider);
@@ -2136,6 +2157,12 @@ pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, Ap
             match state.db.get_provider_by_id(&id, "opencode") {
                 Ok(Some(existing)) => {
                     let display_name = config.name.clone().unwrap_or_else(|| existing.name.clone());
+                    if live_settings_would_lose_ssy(&existing, &settings_config) {
+                        log::warn!(
+                            "OpenCode provider '{id}' 的 live 内容缺少胜算云配置，跳过反向覆盖以保护常驻卡片"
+                        );
+                        continue;
+                    }
                     if existing.settings_config != settings_config || existing.name != display_name
                     {
                         let mut provider = existing;
@@ -2220,6 +2247,12 @@ pub fn import_openclaw_providers_from_live(state: &AppState) -> Result<usize, Ap
         if existing_ids.contains(&id) {
             match state.db.get_provider_by_id(&id, "openclaw") {
                 Ok(Some(existing)) => {
+                    if live_settings_would_lose_ssy(&existing, &settings_config) {
+                        log::warn!(
+                            "OpenClaw provider '{id}' 的 live 内容缺少胜算云配置，跳过反向覆盖以保护常驻卡片"
+                        );
+                        continue;
+                    }
                     if existing.settings_config != settings_config {
                         let mut provider = existing;
                         provider.settings_config = settings_config;
@@ -2295,6 +2328,12 @@ pub fn import_hermes_providers_from_live(state: &AppState) -> Result<usize, AppE
         if existing_ids.contains(&name) {
             match state.db.get_provider_by_id(&name, "hermes") {
                 Ok(Some(existing)) => {
+                    if live_settings_would_lose_ssy(&existing, &config) {
+                        log::warn!(
+                            "Hermes provider '{name}' 的 live 内容缺少胜算云配置，跳过反向覆盖以保护常驻卡片"
+                        );
+                        continue;
+                    }
                     if existing.settings_config != config {
                         let mut provider = existing;
                         provider.settings_config = config;

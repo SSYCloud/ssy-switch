@@ -3718,6 +3718,135 @@ wire_api = "responses"
             );
         });
     }
+
+    #[test]
+    #[serial]
+    fn import_opencode_from_live_does_not_clobber_ssy_card() {
+        // SSY 常驻保护（2026-09-22）：live 残缺快照（丢失胜算云 base URL）
+        // 不得反向覆盖 DB 里的胜算云卡片 —— Windows 配置丢失事故的根因路径。
+        with_test_home(|state, _| {
+            let mut provider = opencode_provider("shengsuanyun");
+            provider.name = "Shengsuanyun".to_string();
+            provider.settings_config = json!({
+                "npm": "@ai-sdk/anthropic",
+                "name": "Shengsuanyun",
+                "options": {
+                    "baseURL": "https://router.shengsuanyun.com/api/v1",
+                    "apiKey": "sk-live-key"
+                }
+            });
+            state
+                .db
+                .save_provider(AppType::OpenCode.as_str(), &provider)
+                .expect("seed ssy opencode provider");
+
+            let live_settings = json!({
+                "npm": "@ai-sdk/anthropic",
+                "options": { "baseURL": "https://example.com" }
+            });
+            crate::opencode_config::set_provider(&provider.id, live_settings)
+                .expect("seed stale live entry");
+
+            let changed = import_opencode_providers_from_live(state)
+                .expect("import opencode providers from live");
+            assert_eq!(changed, 0, "stale live entry must not update the SSY card");
+
+            let saved = state
+                .db
+                .get_provider_by_id(&provider.id, AppType::OpenCode.as_str())
+                .expect("query provider")
+                .expect("provider should exist");
+            let cfg = saved.settings_config.to_string();
+            assert!(cfg.contains("router.shengsuanyun.com"), "base URL kept");
+            assert!(cfg.contains("sk-live-key"), "api key kept");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_shengsuanyun_cards_recreates_missing_card_and_repoints_binding() {
+        // 常驻自愈：卡片被外部清掉后，启动重建卡片、凭据回填、
+        // binding 重指向新卡片 id，且幽灵绑定被清理。
+        with_test_home(|state, _| {
+            let info = ssy_core::models::SsyUserInfo {
+                uid: "62890".into(),
+                display_name: "tester".into(),
+                email: "t@example.com".into(),
+                avatar_url: String::new(),
+                wallet_assets: 0.0,
+                voucher_assets: 0.0,
+            };
+            state
+                .db
+                .upsert_shengsuanyun_account("acc-1", &info, false, None, None, 1)
+                .expect("seed account");
+            state
+                .db
+                .save_shengsuanyun_credentials("acc-1", "sk-acc", "jwt-acc")
+                .expect("seed credentials");
+            state
+                .db
+                .upsert_shengsuanyun_binding("claude", "ghost-id", "acc-1", "oauth", None, 1)
+                .expect("seed ghost binding");
+
+            let recreated = crate::commands::ensure_shengsuanyun_cards(state);
+            assert_eq!(recreated, crate::commands::SSY_ALL_APPS.len());
+
+            let providers = state.db.get_all_providers("claude").expect("list claude");
+            let ssy = providers
+                .values()
+                .find(|p| crate::provider::is_shengsuanyun_provider(p))
+                .expect("ssy card recreated");
+            let cfg = ssy.settings_config.to_string();
+            assert!(cfg.contains("router.shengsuanyun.com"), "preset base URL");
+            assert!(cfg.contains("sk-acc"), "account key injected");
+
+            let binding = state
+                .db
+                .get_shengsuanyun_binding("claude", &ssy.id)
+                .expect("query binding")
+                .expect("binding repointed to new card");
+            assert_eq!(binding.account_id, "acc-1");
+
+            let stale = state
+                .db
+                .list_shengsuanyun_bindings()
+                .expect("list bindings");
+            assert!(
+                stale.iter().all(|b| b.provider_id != "ghost-id"),
+                "ghost binding cleaned: {stale:?}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn delete_rejects_ssy_resident_card() {
+        with_test_home(|state, _| {
+            let mut provider = opencode_provider("shengsuanyun");
+            provider.name = "Shengsuanyun".to_string();
+            provider.settings_config = json!({
+                "name": "Shengsuanyun",
+                "baseUrl": "https://router.shengsuanyun.com/api",
+                "apiKey": "sk"
+            });
+            state
+                .db
+                .save_provider(AppType::OpenCode.as_str(), &provider)
+                .expect("seed ssy provider");
+
+            let result = ProviderService::delete(state, AppType::OpenCode, &provider.id);
+            assert!(result.is_err(), "SSY resident card must not be deletable");
+            assert!(
+                state
+                    .db
+                    .get_provider_by_id(&provider.id, AppType::OpenCode.as_str())
+                    .expect("query")
+                    .is_some(),
+                "card still present"
+            );
+        });
+    }
     #[test]
     #[serial]
     fn import_openclaw_providers_from_live_marks_provider_as_live_managed() {
@@ -4935,6 +5064,15 @@ impl ProviderService {
     /// 同时检查本地 settings 和数据库的当前供应商，防止删除任一端正在使用的供应商。
     /// 对于累加模式应用（OpenCode, OpenClaw），可以随时删除任意供应商，同时从 live 配置中移除。
     pub fn delete(state: &AppState, app_type: AppType, id: &str) -> Result<(), AppError> {
+        // SSY 常驻卡片不可删除（2026-09-22）：产品核心入口，误删也会在下次启动
+        // 自愈重建；如需停用请登出胜算云账号。判定统一走 is_shengsuanyun_provider。
+        if let Ok(Some(p)) = state.db.get_provider_by_id(id, app_type.as_str()) {
+            if crate::provider::is_shengsuanyun_provider(&p) {
+                return Err(AppError::InvalidInput(
+                    "胜算云默认卡片为常驻卡片，不可删除；如需停用请登出胜算云账号".to_string(),
+                ));
+            }
+        }
         if app_type == AppType::Pi {
             return pi::delete(state, id);
         }

@@ -320,6 +320,105 @@ fn run_bind(
     }
 }
 
+/// 胜算云默认卡片常驻保证（2026-09-22 Windows 配置丢失事故）。
+///
+/// 任一宿主下 SSY 卡片缺失（live 反向覆盖 / 误删 / 历史事故残留）时按官方
+/// preset 重建：
+/// - 已登录且该宿主有绑定记录 → 写入账号凭据（绑定记了 key_id 则优先该 Key），
+///   binding 重指向新卡片 id（key_id 原样保留）
+/// - 未登录 / 无绑定 → 重建空 Key 卡片（与首启种子一致，登录后由绑定填充）
+///
+/// 只写 DB：不动 current、不写 live —— 当前生效的供应商与宿主 live 配置不受
+/// 影响。须在阻塞上下文调用（与启动对账同一 spawn_blocking）。
+pub fn ensure_shengsuanyun_cards(app_state: &crate::store::AppState) -> usize {
+    let accounts = match app_state.db.list_shengsuanyun_accounts() {
+        Ok(a) => a,
+        Err(e) => {
+            log::warn!("SSY 常驻检查：读取账号列表失败: {e}");
+            return 0;
+        }
+    };
+    let account = accounts.first();
+    let bindings = app_state
+        .db
+        .list_shengsuanyun_bindings()
+        .unwrap_or_default();
+
+    let mut recreated = 0usize;
+    for app_type in SSY_ALL_APPS {
+        let Ok(at) = <crate::app_config::AppType as std::str::FromStr>::from_str(app_type) else {
+            continue;
+        };
+        let Ok(providers) =
+            crate::services::provider::ProviderService::list(app_state, at.clone())
+        else {
+            continue;
+        };
+        if find_shengsuanyun_provider(providers, &at).is_some() {
+            continue;
+        }
+
+        let binding = bindings.iter().find(|b| b.app_type == *app_type);
+        let api_key = match (account, binding) {
+            (Some(acc), Some(b)) => {
+                let fallback = app_state
+                    .db
+                    .load_shengsuanyun_credentials(&acc.id)
+                    .map(|(k, _)| k)
+                    .unwrap_or_default();
+                match b.key_id {
+                    Some(key_id) => {
+                        resolve_token_plaintext(app_state, &acc.id, key_id).unwrap_or(fallback)
+                    }
+                    None => fallback,
+                }
+            }
+            (Some(acc), None) => app_state
+                .db
+                .load_shengsuanyun_credentials(&acc.id)
+                .map(|(k, _)| k)
+                .unwrap_or_default(),
+            (None, _) => String::new(),
+        };
+
+        let created = new_shengsuanyun_provider(&at, &api_key);
+        let new_id = created.id.clone();
+        if let Err(e) = crate::services::provider::ProviderService::add(
+            app_state,
+            at.clone(),
+            created,
+            false,
+        ) {
+            log::error!("SSY 常驻重建 {app_type} 失败: {e}");
+            continue;
+        }
+        if let (Some(acc), Some(b)) = (account, binding) {
+            if let Err(e) = app_state.db.upsert_shengsuanyun_binding(
+                app_type,
+                &new_id,
+                &acc.id,
+                "oauth",
+                b.key_id,
+                chrono::Utc::now().timestamp(),
+            ) {
+                log::warn!("SSY 常驻重建 {app_type}：binding 重指向失败: {e}");
+            }
+        }
+        // 绑定主键是 (app_type, provider_id)：upsert 新 id 后旧行还在，
+        // 必须清掉幽灵绑定，否则下次启动对账先命中旧行。
+        match app_state.db.delete_stale_shengsuanyun_bindings(app_type) {
+            Ok(n) if n > 0 => {
+                log::info!("SSY 常驻重建 {app_type}：清理了 {n} 条幽灵绑定");
+            }
+            Ok(_) => {}
+            Err(e) => log::warn!("SSY 常驻重建 {app_type}：幽灵绑定清理失败: {e}"),
+        }
+        recreated += 1;
+        log::info!("SSY 常驻重建：{app_type} 胜算云卡片缺失，已按 preset 重建");
+    }
+    recreated
+}
+
 /// 解析「用户选中的上游 Token」明文。
 ///
 /// 仅在绑定记录里存了 key_id 时才会走到这里（一次网络往返）。
@@ -489,10 +588,7 @@ fn find_shengsuanyun_provider(
     at: &crate::app_config::AppType,
 ) -> Option<(String, crate::provider::Provider, String)> {
     for (id, p) in providers {
-        let cfg = p.settings_config.to_string();
-        let is_ssy =
-            cfg.contains("router.shengsuanyun.com") || p.name.eq_ignore_ascii_case("shengsuanyun");
-        if !is_ssy {
+        if !crate::provider::is_shengsuanyun_provider(&p) {
             continue;
         }
         let key = read_token(&p, at);

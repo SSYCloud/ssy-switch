@@ -3320,6 +3320,9 @@
     "payWechat": "WeChat Pay",
     "payAlipay": "Alipay",
     "loadMore": "さらに読み込む",
-    "modalityUsage": "マルチモーダル利用（画像/動画）"
+    "modalityUsage": "マルチモーダル利用（画像/動画）",
+    "rechargeWebHint": "チャージはブラウザの勝算雲コンソールで行われます。",
+    "openWebRecharge": "Webでチャージを開く",
+    "webRechargeReturnHint": "支払い後にこのアプリへ戻ると、残高は自動的に更新されます。"
   }
 }

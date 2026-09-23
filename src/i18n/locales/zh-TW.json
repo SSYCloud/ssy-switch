@@ -3321,6 +3321,9 @@
     "payWechat": "微信支付",
     "payAlipay": "支付寶",
     "loadMore": "載入更多",
-    "modalityUsage": "多模態調用（圖片/影片）"
+    "modalityUsage": "多模態調用（圖片/影片）",
+    "rechargeWebHint": "儲值將在瀏覽器中的勝算雲控制台完成。",
+    "openWebRecharge": "開啟網頁儲值",
+    "webRechargeReturnHint": "付款完成後返回本應用，餘額將自動刷新。"
   }
 }

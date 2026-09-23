@@ -3338,18 +3338,9 @@
     "loadMore": "Load more",
     "modalityUsage": "Multimodal usage (image/video)",
     "belowMinimum": "Below the minimum recharge amount of ¥30",
-    "alipay": "Alipay",
-    "wechatPay": "WeChat Pay",
-    "payMethod": "Payment Method",
-    "back": "Back to selection",
-    "scanPayTitle": "Scan to Pay",
-    "rechargeDone": "Recharge Complete",
-    "balanceRefreshed": "Balance refreshed automatically",
-    "rechargeAgain": "Recharge again",
-    "backToSelect": "Back to selection",
-    "qrAlt": "Payment QR code",
-    "orderPending": "Waiting for payment…",
-    "countdown": "QR expires in {{time}}",
+    "rechargeWebHint": "Recharge is completed on the Shengsuanyun console in your browser.",
+    "openWebRecharge": "Open web recharge",
+    "webRechargeReturnHint": "Return to this app after payment and your balance will refresh automatically.",
     "loginTimeout": "Login timed out (no response in 2 minutes). Close the browser auth page and retry; if it persists, check your proxy settings."
   }
 }

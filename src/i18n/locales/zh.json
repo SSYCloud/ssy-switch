@@ -3338,18 +3338,9 @@
     "loadMore": "加载更多",
     "modalityUsage": "多模态调用（图片/视频）",
     "belowMinimum": "低于最低充值金额 ¥30",
-    "alipay": "支付宝",
-    "wechatPay": "微信支付",
-    "payMethod": "支付方式",
-    "back": "返回重选",
-    "scanPayTitle": "扫码支付",
-    "rechargeDone": "充值成功",
-    "balanceRefreshed": "余额已自动刷新",
-    "rechargeAgain": "再充一笔",
-    "backToSelect": "返回重选",
-    "qrAlt": "收款码",
-    "orderPending": "正在等待支付结果…",
-    "countdown": "二维码 {{time}} 后过期",
+    "rechargeWebHint": "充值将在浏览器中的胜算云控制台完成。",
+    "openWebRecharge": "打开网页充值",
+    "webRechargeReturnHint": "支付完成后返回本应用，余额将自动刷新。",
     "loginTimeout": "登录超时（2 分钟无响应）。请关闭浏览器授权页后重试；若反复失败请检查网络代理设置。"
   }
 }

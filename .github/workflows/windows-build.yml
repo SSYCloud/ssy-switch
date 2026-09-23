@@ -33,6 +33,21 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # 仓库为 PRIVATE：cargo 拉 SSYCloud/ssy-sdk-rust 需要带凭证。
+      # GITHUB_TOKEN 只能访问本仓库，必须用 PAT（secret: PRIVATE_REPO_TOKEN）。
+      # 无 secret 时跳过 —— 公开仓库场景不需要这一步。
+      - name: Grant private dependency access
+        shell: pwsh
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:PRIVATE_REPO_TOKEN)) {
+            Write-Warning 'PRIVATE_REPO_TOKEN not set — skipping git auth rewrite (only works while ssy-sdk-rust is public)'
+          } else {
+            git config --global url."https://x-access-token:$($env:PRIVATE_REPO_TOKEN)@github.com/SSYCloud/".insteadOf "https://github.com/SSYCloud/"
+            Write-Host 'git URL rewrite for SSYCloud private repos configured'
+          }
+
       - name: Setup pnpm
         env:
           COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"

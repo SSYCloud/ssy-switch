@@ -5040,8 +5040,8 @@ dependencies = [
 
 [[package]]
 name = "ssy-core"
-version = "0.2.2"
-source = "git+https://github.com/SSYCloud/ssy-sdk-rust?tag=v0.2.2#683a615cd328c1d19716d1069218d412de53d883"
+version = "0.2.3"
+source = "git+https://github.com/SSYCloud/ssy-sdk-rust?tag=v0.2.3#fde8b8ef135dbe07a22d80989ac203989fef80ea"
 dependencies = [
  "axum",
  "chrono",

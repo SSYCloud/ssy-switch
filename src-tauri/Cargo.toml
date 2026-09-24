@@ -23,7 +23,7 @@ test-hooks = []
 tauri-build = { version = "2.4.0", features = [] }
 
 [dependencies]
-ssy-core = { git = "https://github.com/SSYCloud/ssy-sdk-rust", tag = "v0.2.2" }
+ssy-core = { git = "https://github.com/SSYCloud/ssy-sdk-rust", tag = "v0.2.3" }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"

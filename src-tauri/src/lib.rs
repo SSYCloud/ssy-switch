@@ -1269,12 +1269,16 @@ pub fn run() {
                         let Some(provider) = providers.get(&binding.provider_id) else {
                             continue;
                         };
-                        // 两种情况需要补：
+                        // 三种情况需要补/升级：
                         // a) 完全没有用量脚本 → 填默认脚本；
                         // b) 脚本由旧版出厂模板创建（含 {{shengsuanyunJwt}} 标记）但
                         //    template_type 为空 → 仅升级模板标记（否则同源检查会拦截
                         //    api. → router. 的跨域请求）。用户自配脚本（无标记或已带
-                        //    任意 template_type）一律不动。
+                        //    任意 template_type）一律不动；
+                        // c) 出厂 jwt 版脚本（2026-09-24 前）→ 整体替换为 api_key 版：
+                        //    jwt 约 6.9 天过期且无续期，过期后所有卡片余额显示 0.00。
+                        //    精确匹配出厂模板文本（含 template_type 标记），用户改过
+                        //    的脚本不在此列、不动。
                         let usage = provider
                             .meta
                             .as_ref()
@@ -1284,13 +1288,21 @@ pub fn run() {
                             u.template_type.is_none()
                                 && u.code.contains("{{shengsuanyunJwt}}")
                         });
-                        if !needs_full_backfill && !needs_template_upgrade {
+                        let needs_factory_script_upgrade = usage.is_some_and(|u| {
+                            u.template_type.as_deref() == Some("shengsuanyun")
+                                && u.code
+                                    == crate::shengsuanyun::usage_script::legacy_factory_script_code()
+                        });
+                        if !needs_full_backfill
+                            && !needs_template_upgrade
+                            && !needs_factory_script_upgrade
+                        {
                             continue;
                         }
                         let mut updated = provider.clone();
                         updated.meta = Some(match updated.meta.take() {
                             Some(mut m) => {
-                                if needs_full_backfill {
+                                if needs_full_backfill || needs_factory_script_upgrade {
                                     m.usage_script = Some(
                                         crate::shengsuanyun::usage_script::default_usage_script_meta()
                                             .usage_script

@@ -35,7 +35,12 @@ type SsyErrorKind =
 function classifySsyError(error: unknown): SsyErrorKind {
   const raw = String(error);
   if (/402|insufficient|余额不足/i.test(raw)) return "insufficient";
-  if (/401|token invalid|token expired|unauthorized|凭据失效/i.test(raw)) return "relogin";
+  if (
+    /401|token invalid|token expired|unauthorized|authorization has expired|凭据失效/i.test(
+      raw,
+    )
+  )
+    return "relogin";
   if (/429|rate limit/i.test(raw)) return "ratelimit";
   if (/(^|\D)5\d\d($|\D)|bad gateway|service unavailable|暂时不可用/i.test(raw))
     return "upstream";

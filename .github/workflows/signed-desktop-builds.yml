@@ -1,0 +1,233 @@
+name: Signed desktop builds
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-universal:
+    runs-on: macos-14
+    environment: release
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Install Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Install pnpm
+        shell: bash
+        run: |
+          npm install --global pnpm@10.12.3 --force
+          prefix=$(npm prefix --global)
+          if [ "$RUNNER_OS" = Windows ]; then echo "$prefix" >> "$GITHUB_PATH"; else echo "$prefix/bin" >> "$GITHUB_PATH"; fi
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Import Developer ID certificate
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_TEAM_ID APPLE_ID APPLE_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "Missing required secret: $name" >&2; exit 1; fi
+          done
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          KEYCHAIN_PATH="$RUNNER_TEMP/ssy-build.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/apple-certificate.p12"
+          trap 'rm -f "$CERT_PATH"' EXIT
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" /Library/Keychains/System.keychain
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          identities=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -F "Developer ID Application:" | grep -F "($APPLE_TEAM_ID)" || true)
+          if [ "$(printf '%s\n' "$identities" | grep -c 'Developer ID Application:' || true)" -ne 1 ]; then
+            echo 'Expected exactly one Developer ID Application identity matching APPLE_TEAM_ID.' >&2
+            exit 1
+          fi
+          identity=$(printf '%s\n' "$identities" | awk '{print $2}')
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Build and notarize macOS app
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: credential.https://github.com.username
+          GIT_CONFIG_VALUE_0: x-access-token
+        run: |
+          set -euo pipefail
+          if [ -n "$PRIVATE_REPO_TOKEN" ]; then
+            export GIT_ASKPASS="$RUNNER_TEMP/git-askpass.sh"
+            trap 'rm -f "$GIT_ASKPASS"' EXIT
+            printf '#!/bin/sh\ncase "$1" in *sername*) printf "%%s\\n" x-access-token ;; *) printf "%%s\\n" "$PRIVATE_REPO_TOKEN" ;; esac\n' > "$GIT_ASKPASS"
+            chmod 700 "$GIT_ASKPASS"
+          fi
+          pnpm tauri build --target universal-apple-darwin --bundles dmg
+      - name: Verify and collect macOS packages
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          shopt -s nullglob
+          apps=("$bundle"/macos/*.app)
+          dmgs=("$bundle"/dmg/*.dmg)
+          [ "${#apps[@]}" -eq 1 ] && [ "${#dmgs[@]}" -eq 1 ] || { echo 'Expected exactly one app and DMG' >&2; exit 1; }
+          app=${apps[0]}; dmg=${dmgs[0]}
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$executable"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=4 "$app" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
+          xcrun stapler staple "$app"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          # Tauri notarizes the app. Sign, submit, and staple the distributable DMG too.
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
+          result=$(xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json)
+          status=$(printf '%s' "$result" | node -e 'let s=""; process.stdin.on("data", c => s+=c); process.stdin.on("end", () => console.log(JSON.parse(s).status || ""))')
+          [ "$status" = Accepted ] || { echo "DMG notarization status: $status" >&2; exit 1; }
+          xcrun stapler staple "$dmg"
+          codesign --verify --verbose=2 "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          mkdir -p release-assets
+          cp "$dmg" release-assets/
+          ditto -c -k --sequesterRsrc --keepParent "$app" release-assets/SSY-Switch-macOS-universal.zip
+          (cd release-assets && shasum -a 256 -- * > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ssy-switch-macos-universal
+          path: release-assets/*
+          if-no-files-found: error
+      - name: Remove temporary keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/ssy-build.keychain-db" 2>/dev/null || true
+
+  windows-x64:
+    runs-on: windows-2022
+    environment: release
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Install Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+      - name: Install pnpm
+        shell: bash
+        run: |
+          npm install --global pnpm@10.12.3 --force
+          prefix=$(npm prefix --global)
+          if [ "$RUNNER_OS" = Windows ]; then echo "$prefix" >> "$GITHUB_PATH"; else echo "$prefix/bin" >> "$GITHUB_PATH"; fi
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Import persistent self-signed certificate
+        timeout-minutes: 3
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:WINDOWS_CERTIFICATE -or -not $env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'Missing WINDOWS_CERTIFICATE or WINDOWS_CERTIFICATE_PASSWORD' }
+          $pfx = Join-Path $env:RUNNER_TEMP 'ssy-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            Write-Host 'Importing the signing identity into the temporary runner'
+            $certs = @(Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password)
+          } finally { Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue }
+          if ($certs.Count -ne 1) { throw 'PFX must contain exactly one signing identity' }
+          $cert = $certs[0]
+          if (-not $cert.HasPrivateKey -or $cert.Subject -ne $cert.Issuer -or $cert.NotBefore -gt (Get-Date) -or $cert.NotAfter -le (Get-Date)) { throw 'PFX must contain a currently valid self-signed identity with a private key' }
+          if (-not (@($cert.EnhancedKeyUsageList | ForEach-Object { $_.ObjectId }) -contains '1.3.6.1.5.5.7.3.3')) { throw 'Certificate must allow code signing' }
+          # Trust the public certificate only on this disposable runner so Windows can verify the self-signed files.
+          $cer = Join-Path $env:RUNNER_TEMP 'ssy-signing.cer'
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          Write-Host 'Adding the public certificate to the temporary runner trust store'
+          & certutil.exe -f -addstore Root $cer | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to trust certificate on the runner' }
+          Write-Host 'Adding the public certificate to trusted publishers'
+          & certutil.exe -f -addstore TrustedPublisher $cer | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to add trusted publisher on the runner' }
+          Remove-Item -LiteralPath $cer -Force
+          "WINDOWS_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $config = @{ bundle = @{ windows = @{ certificateThumbprint = $cert.Thumbprint; digestAlgorithm = 'sha256' } } } | ConvertTo-Json -Depth 5
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'tauri-signing.json'), $config, [Text.UTF8Encoding]::new($false))
+      - name: Build signed Windows app and installers
+        shell: pwsh
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: credential.https://github.com.username
+          GIT_CONFIG_VALUE_0: x-access-token
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $askpass = Join-Path $env:RUNNER_TEMP 'git-askpass.cmd'
+          try {
+            if ($env:PRIVATE_REPO_TOKEN) {
+              $env:GIT_ASKPASS = $askpass
+              [IO.File]::WriteAllText($askpass, "@echo off`r`necho %~1 | findstr /i username >nul`r`nif not errorlevel 1 (echo x-access-token) else (echo %PRIVATE_REPO_TOKEN%)`r`n")
+            }
+            pnpm tauri build --target x86_64-pc-windows-msvc --bundles 'msi,nsis' --config (Join-Path $env:RUNNER_TEMP 'tauri-signing.json')
+            if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
+          } finally { Remove-Item -LiteralPath $askpass -Force -ErrorAction SilentlyContinue }
+      - name: Verify and collect Windows packages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'src-tauri/target/x86_64-pc-windows-msvc/release'
+          $msi = @(Get-ChildItem (Join-Path $target 'bundle/msi') -Filter '*.msi' -File)
+          $nsis = @(Get-ChildItem (Join-Path $target 'bundle/nsis') -Filter '*.exe' -File)
+          if ($msi.Count -ne 1 -or $nsis.Count -ne 1) { throw 'Expected exactly one MSI and one NSIS installer' }
+          # Tauri may restore the unsigned build output after bundling. Verify the
+          # application inside each installer as well as the installers themselves.
+          $msiDir = Join-Path $env:RUNNER_TEMP 'msi-extract'
+          $nsisDir = Join-Path $env:RUNNER_TEMP 'nsis-extract'
+          New-Item -ItemType Directory -Force -Path $msiDir, $nsisDir | Out-Null
+          $extract = Start-Process msiexec.exe -ArgumentList @('/a', "`"$($msi[0].FullName)`"", '/qn', "TARGETDIR=`"$msiDir`"") -Wait -PassThru
+          if ($extract.ExitCode -ne 0) { throw "MSI extraction failed: $($extract.ExitCode)" }
+          & 7z x $nsis[0].FullName "-o$nsisDir" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+          $msiApp = @(Get-ChildItem $msiDir -Recurse -File -Filter 'ssy-switch.exe')
+          $nsisApp = @(Get-ChildItem $nsisDir -Recurse -File -Filter 'ssy-switch.exe')
+          if ($msiApp.Count -ne 1 -or $nsisApp.Count -ne 1) { throw 'Expected one application executable in each installer' }
+          foreach ($file in @($msiApp[0], $nsisApp[0], $msi[0], $nsis[0])) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:WINDOWS_CERT_THUMBPRINT) { throw "Signature verification failed for $($file.Name): $($signature.Status)" }
+          }
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          Copy-Item -LiteralPath $msi[0].FullName, $nsis[0].FullName -Destination release-assets
+          $sums = Get-ChildItem release-assets -File | Sort-Object Name | ForEach-Object { "$(($_ | Get-FileHash -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" }
+          [IO.File]::WriteAllLines((Join-Path (Get-Location) 'release-assets/SHA256SUMS.txt'), [string[]]$sums, [Text.UTF8Encoding]::new($false))
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ssy-switch-windows-x64
+          path: release-assets/*
+          if-no-files-found: error

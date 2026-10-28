@@ -115,7 +115,7 @@ jobs:
           [ "${#apps[@]}" -eq 1 ] && [ "${#dmgs[@]}" -eq 1 ] || { echo 'Expected exactly one app and DMG' >&2; exit 1; }
           app=${apps[0]}; dmg=${dmgs[0]}
           executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
-          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$executable"
+          lipo "$app/Contents/MacOS/$executable" -verify_arch x86_64 arm64
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv --verbose=4 "$app" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
           # Both variants carry a Developer ID signature on the DMG.

@@ -98,7 +98,7 @@ jobs:
             printf '#!/bin/sh\ncase "$1" in *sername*) printf "%%s\\n" x-access-token ;; *) printf "%%s\\n" "$PRIVATE_REPO_TOKEN" ;; esac\n' > "$GIT_ASKPASS"
             chmod 700 "$GIT_ASKPASS"
           fi
-          pnpm tauri build --target universal-apple-darwin --bundles dmg
+          pnpm tauri build --target universal-apple-darwin --bundles app,dmg
       - name: Verify and collect macOS packages
         shell: bash
         env:

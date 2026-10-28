@@ -10,8 +10,8 @@
 | --- | --- |
 | `APPLE_CERTIFICATE` | 包含私钥的 **Developer ID Application** 证书 `.p12` 文件的 Base64 内容 |
 | `APPLE_CERTIFICATE_PASSWORD` | 导出 `.p12` 时设置的密码 |
-| `APPLE_ID` | 用于公证的 Apple 账户邮箱 |
-| `APPLE_PASSWORD` | 该 Apple 账户的应用专用密码，不是账户登录密码 |
+| `APPLE_ID` | 用于公证的 Apple 账户邮箱；不公证时不需要 |
+| `APPLE_PASSWORD` | 该 Apple 账户的应用专用密码，不是账户登录密码；不公证时不需要 |
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
 | `WINDOWS_CERTIFICATE` | 包含私钥的 Windows 代码签名 `.pfx` 文件的 Base64 内容 |
 | `WINDOWS_CERTIFICATE_PASSWORD` | 导出 `.pfx` 时设置的密码 |
@@ -46,10 +46,12 @@ Export-Certificate -Cert $cert -FilePath 'C:\secure\ssy-switch-signing.cer'
 
 ## 运行和检查
 
-1. 在仓库 **Actions → Signed desktop builds → Run workflow** 中选择可信分支或 tag 并启动。不要对未经审查的代码运行持有签名 secrets 的工作流；所选 ref 必须已包含该工作流版本。
+1. 在仓库 **Actions → Signed desktop builds → Run workflow** 中选择可信分支或 tag 并启动。`Notarize macOS packages` 默认开启；关闭后生成仅签名、不公证的 macOS 测试包。`Build Windows packages` 默认开启，关闭后只构建 macOS。不要对未经审查的代码运行持有签名 secrets 的工作流；所选 ref 必须已包含该工作流版本。
 2. 等待 Windows 和 macOS 任务均成功，在运行详情的 **Artifacts** 下载对应平台的安装包和 `SHA256SUMS.txt`。工作流不会将文件发布到 Release；如需发布，请先检查产物再由维护者操作。
 3. 对照 `SHA256SUMS.txt` 验证下载文件的 SHA-256。Windows 可用 `Get-FileHash -Algorithm SHA256 <文件路径>`；macOS 可用 `shasum -a 256 <文件路径>`。
-4. 在 macOS 检查应用签名、公证及装订，例如对解压后的 `.app` 执行 `codesign --verify --deep --strict --verbose=2 <应用路径>`，并对 DMG 执行 `xcrun stapler validate <DMG路径>` 和 `spctl -a -t open --context context:primary-signature -vv <DMG路径>`。在 Windows 可用 `Get-AuthenticodeSignature <安装包路径>` 检查签名证书及状态；应与预先通过可信渠道核对的证书指纹比较。未导入自签证书的电脑可能报告证书链不受信任，即使文件签名存在。
+4. 已公证版本在 macOS 检查应用签名、公证及装订，例如对解压后的 `.app` 执行 `codesign --verify --deep --strict --verbose=2 <应用路径>`，并对 DMG 执行 `xcrun stapler validate <DMG路径>` 和 `spctl -a -t open --context context:primary-signature -vv <DMG路径>`。在 Windows 可用 `Get-AuthenticodeSignature <安装包路径>` 检查签名证书及状态；应与预先通过可信渠道核对的证书指纹比较。未导入自签证书的电脑可能报告证书链不受信任，即使文件签名存在。
 5. 在干净的 Windows 和 macOS 测试设备上安装、启动并检查实际系统提示。真实签名、公证和安装验证需要有效 secrets 及对应平台；仅检查工作流语法不能证明发布包已签名或通过公证。
+
+关闭公证时，macOS artifact 和文件名含 `not-notarized`。应用和 DMG 仍使用 Developer ID 签名并验证签名，但不提交 Apple 公证，也不进行装订或 Gatekeeper 通过检查。下载到其他 Mac 后，Gatekeeper 可能阻止打开；测试者可在确认来源后按系统提示到「系统设置 → 隐私与安全性」允许打开。仅签名测试包不应被当作已公证的正式分发包。
 
 来自 fork 的 pull request 默认无法使用仓库 secrets，因此不应把 PR 检查视为签名发布验证。参见 [GitHub Actions secrets 文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)。

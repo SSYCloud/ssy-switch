@@ -2,6 +2,17 @@ name: Signed desktop builds
 
 on:
   workflow_dispatch:
+    inputs:
+      notarize:
+        description: Notarize macOS packages (disable only for testing)
+        type: boolean
+        default: true
+        required: true
+      build_windows:
+        description: Build Windows packages
+        type: boolean
+        default: true
+        required: true
 
 permissions:
   contents: read
@@ -34,11 +45,9 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
           set -euo pipefail
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_TEAM_ID APPLE_ID APPLE_PASSWORD; do
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!name}" ]; then echo "Missing required secret: $name" >&2; exit 1; fi
           done
           KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
@@ -60,12 +69,13 @@ jobs:
           fi
           identity=$(printf '%s\n' "$identities" | awk '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
-      - name: Build and notarize macOS app
+      - name: Build signed macOS app
         shell: bash
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARIZE: ${{ inputs.notarize }}
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           GIT_TERMINAL_PROMPT: '0'
@@ -74,6 +84,14 @@ jobs:
           GIT_CONFIG_VALUE_0: x-access-token
         run: |
           set -euo pipefail
+          if [ "$NOTARIZE" = true ]; then
+            for name in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              if [ -z "${!name}" ]; then echo "Missing required secret: $name" >&2; exit 1; fi
+            done
+          else
+            # Tauri detects these variables to enable notarization. Remove them entirely.
+            unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          fi
           if [ -n "$PRIVATE_REPO_TOKEN" ]; then
             export GIT_ASKPASS="$RUNNER_TEMP/git-askpass.sh"
             trap 'rm -f "$GIT_ASKPASS"' EXIT
@@ -84,6 +102,7 @@ jobs:
       - name: Verify and collect macOS packages
         shell: bash
         env:
+          NOTARIZE: ${{ inputs.notarize }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -99,25 +118,33 @@ jobs:
           lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$executable"
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv --verbose=4 "$app" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
-          xcrun stapler staple "$app"
-          xcrun stapler validate "$app"
-          spctl --assess --type execute --verbose=2 "$app"
-          # Tauri notarizes the app. Sign, submit, and staple the distributable DMG too.
+          # Both variants carry a Developer ID signature on the DMG.
           codesign --force --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
-          result=$(xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json)
-          status=$(printf '%s' "$result" | node -e 'let s=""; process.stdin.on("data", c => s+=c); process.stdin.on("end", () => console.log(JSON.parse(s).status || ""))')
-          [ "$status" = Accepted ] || { echo "DMG notarization status: $status" >&2; exit 1; }
-          xcrun stapler staple "$dmg"
           codesign --verify --verbose=2 "$dmg"
-          xcrun stapler validate "$dmg"
-          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          codesign -dv --verbose=4 "$dmg" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
           mkdir -p release-assets
-          cp "$dmg" release-assets/
-          ditto -c -k --sequesterRsrc --keepParent "$app" release-assets/SSY-Switch-macOS-universal.zip
+          if [ "$NOTARIZE" = true ]; then
+            xcrun stapler staple "$app"
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=2 "$app"
+            # Tauri notarizes the app. Notarize and staple the distributable DMG too.
+            result=$(xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json)
+            status=$(printf '%s' "$result" | node -e 'let s=""; process.stdin.on("data", c => s+=c); process.stdin.on("end", () => console.log(JSON.parse(s).status || ""))')
+            [ "$status" = Accepted ] || { echo "DMG notarization status: $status" >&2; exit 1; }
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+            cp "$dmg" release-assets/
+            ditto -c -k --sequesterRsrc --keepParent "$app" release-assets/SSY-Switch-macOS-universal.zip
+          else
+            name=${dmg##*/}
+            cp "$dmg" "release-assets/${name%.dmg}-not-notarized.dmg"
+            ditto -c -k --sequesterRsrc --keepParent "$app" release-assets/SSY-Switch-macOS-universal-not-notarized.zip
+          fi
           (cd release-assets && shasum -a 256 -- * > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v7
         with:
-          name: ssy-switch-macos-universal
+          name: ${{ inputs.notarize && 'ssy-switch-macos-universal' || 'ssy-switch-macos-universal-not-notarized' }}
           path: release-assets/*
           if-no-files-found: error
       - name: Remove temporary keychain
@@ -125,6 +152,7 @@ jobs:
         run: security delete-keychain "$RUNNER_TEMP/ssy-build.keychain-db" 2>/dev/null || true
 
   windows-x64:
+    if: inputs.build_windows
     runs-on: windows-2022
     environment: release
     timeout-minutes: 120

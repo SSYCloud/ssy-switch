@@ -1,0 +1,82 @@
+name: macOS notarization status
+
+on:
+  workflow_dispatch:
+    inputs:
+      submission_id:
+        description: Existing Apple submission UUID (leave empty to list history)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: macos-14
+    environment: release
+    timeout-minutes: 10
+    steps:
+      - name: Query existing Apple submissions
+        timeout-minutes: 5
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SUBMISSION_ID: ${{ inputs.submission_id }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then echo "Missing required secret: $name" >&2; exit 1; fi
+          done
+          mkdir -p notary-status
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import uuid
+
+          auth = ["--apple-id", os.environ["APPLE_ID"], "--password", os.environ["APPLE_PASSWORD"], "--team-id", os.environ["APPLE_TEAM_ID"]]
+          submission = os.environ.get("SUBMISSION_ID", "").strip()
+          if submission:
+              submission = str(uuid.UUID(submission))
+          args = ["info", submission] if submission else ["history"]
+          # Read-only: never submit or re-upload an application in this workflow.
+          try:
+              result = subprocess.run(["xcrun", "notarytool", *args, *auth, "--output-format", "json"], capture_output=True, text=True, timeout=180)
+          except subprocess.TimeoutExpired:
+              raise SystemExit("Apple status query timed out; no new submission was created.")
+          if result.returncode:
+              print(result.stdout)
+              print(result.stderr)
+              raise SystemExit(result.returncode)
+          data = json.loads(result.stdout)
+          pathlib.Path("notary-status/status.json").write_text(json.dumps(data, indent=2) + "\n")
+          rows = [data] if submission else data.get("history", [])
+          summary = ["## Existing Apple notarization submissions", "", "This is a read-only query. No application was submitted.", "", "| Submission ID | Name | Created | Apple status |", "| --- | --- | --- | --- |"]
+          for row in rows:
+              values = [str(row.get(key, "")).replace("|", "\\|").replace("\n", " ") for key in ("id", "name", "createdDate", "status")]
+              line = "| " + " | ".join(values) + " |"
+              print(line)
+              summary.append(line)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+              output.write("\n".join(summary) + "\n")
+          if submission and data.get("status") in ("Accepted", "Invalid", "Rejected"):
+              try:
+                  log = subprocess.run(["xcrun", "notarytool", "log", submission, *auth, "notary-status/log.json"], capture_output=True, text=True, timeout=60)
+              except subprocess.TimeoutExpired:
+                  raise SystemExit("Apple log query timed out; see the saved status report.")
+              if log.returncode:
+                  print(log.stderr)
+                  raise SystemExit(log.returncode)
+              print(pathlib.Path("notary-status/log.json").read_text())
+          PY
+      - name: Save Apple status report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-notary-status
+          path: notary-status/
+          if-no-files-found: warn

@@ -99,6 +99,19 @@ jobs:
           subprocess.run(["spctl", "--assess", "--type", "execute", "--verbose=2", app], check=True, timeout=60)
           pathlib.Path("release-assets").mkdir(exist_ok=True)
           subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, "release-assets/SSY-Switch-macOS-universal.zip"], check=True)
+          # Older submissions covered only the app ZIP. Include a DMG only when
+          # the accepted submission covered it and its own ticket validates.
+          if log.get("archiveFilename", "").endswith(".dmg"):
+              import shutil
+              dmgs = list(pathlib.Path("signed-package").glob("*.dmg"))
+              if len(dmgs) != 1:
+                  raise SystemExit("Expected exactly one preserved DMG.")
+              dmg = str(dmgs[0])
+              subprocess.run(["codesign", "--verify", "--verbose=2", dmg], check=True)
+              subprocess.run(["xcrun", "stapler", "staple", dmg], check=True, timeout=120)
+              subprocess.run(["xcrun", "stapler", "validate", dmg], check=True, timeout=60)
+              subprocess.run(["spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=2", dmg], check=True, timeout=60)
+              shutil.copy2(dmg, pathlib.Path("release-assets") / dmgs[0].name.replace("-not-notarized.dmg", ".dmg"))
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
               output.write("## Recovered notarized app\n\nBoth architectures match the existing Apple ticket. Stapling and Gatekeeper assessment passed. No new notarization was submitted.\n\nSubmission: `" + log["jobId"] + "`\nSource run: `" + os.environ["SOURCE_RUN_ID"] + "`\n")
           PY

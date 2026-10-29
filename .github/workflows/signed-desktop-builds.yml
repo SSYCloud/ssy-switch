@@ -72,10 +72,6 @@ jobs:
       - name: Build signed macOS app
         shell: bash
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARIZE: ${{ inputs.notarize }}
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           GIT_TERMINAL_PROMPT: '0'
@@ -84,14 +80,9 @@ jobs:
           GIT_CONFIG_VALUE_0: x-access-token
         run: |
           set -euo pipefail
-          if [ "$NOTARIZE" = true ]; then
-            for name in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-              if [ -z "${!name}" ]; then echo "Missing required secret: $name" >&2; exit 1; fi
-            done
-          else
-            # Tauri detects these variables to enable notarization. Remove them entirely.
-            unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-          fi
+          # Preserve signed packages before contacting Apple. Tauri's internal
+          # notarization otherwise blocks before Actions can save the app or ID.
+          unset APPLE_ID APPLE_PASSWORD APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
           if [ -n "$PRIVATE_REPO_TOKEN" ]; then
             export GIT_ASKPASS="$RUNNER_TEMP/git-askpass.sh"
             trap 'rm -f "$GIT_ASKPASS"' EXIT
@@ -99,12 +90,9 @@ jobs:
             chmod 700 "$GIT_ASKPASS"
           fi
           pnpm tauri build --target universal-apple-darwin --bundles app,dmg
-      - name: Verify and collect macOS packages
+      - name: Verify and preserve signed macOS packages
         shell: bash
         env:
-          NOTARIZE: ${{ inputs.notarize }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
@@ -123,30 +111,121 @@ jobs:
           codesign --verify --verbose=2 "$dmg"
           codesign -dv --verbose=4 "$dmg" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
           mkdir -p release-assets
-          if [ "$NOTARIZE" = true ]; then
-            xcrun stapler staple "$app"
-            xcrun stapler validate "$app"
-            spctl --assess --type execute --verbose=2 "$app"
-            # Tauri notarizes the app. Notarize and staple the distributable DMG too.
-            result=$(xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json)
-            status=$(printf '%s' "$result" | node -e 'let s=""; process.stdin.on("data", c => s+=c); process.stdin.on("end", () => console.log(JSON.parse(s).status || ""))')
-            [ "$status" = Accepted ] || { echo "DMG notarization status: $status" >&2; exit 1; }
-            xcrun stapler staple "$dmg"
-            xcrun stapler validate "$dmg"
-            spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
-            cp "$dmg" release-assets/
-            ditto -c -k --sequesterRsrc --keepParent "$app" release-assets/SSY-Switch-macOS-universal.zip
-          else
-            name=${dmg##*/}
-            cp "$dmg" "release-assets/${name%.dmg}-not-notarized.dmg"
-            ditto -c -k --sequesterRsrc --keepParent "$app" release-assets/SSY-Switch-macOS-universal-not-notarized.zip
-          fi
+          name=${dmg##*/}
+          cp "$dmg" "release-assets/${name%.dmg}-not-notarized.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "$app" release-assets/SSY-Switch-macOS-universal-not-notarized.zip
           (cd release-assets && shasum -a 256 -- * > SHA256SUMS.txt)
-      - uses: actions/upload-artifact@v7
+      - name: Save original packages before notarization
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ inputs.notarize && 'ssy-switch-macos-universal' || 'ssy-switch-macos-universal-not-notarized' }}
+          name: ssy-switch-macos-universal-not-notarized
           path: release-assets/*
           if-no-files-found: error
+          retention-days: 90
+      - name: Submit preserved DMG to Apple
+        if: inputs.notarize
+        id: submission
+        timeout-minutes: 10
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then echo "Missing required secret: $name" >&2; exit 1; fi
+          done
+          mkdir -p notary-state
+          dmgs=(src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          # Apple scans nested signed code too. Submit the outer DMG once,
+          # without --wait, so the submission UUID can be saved immediately.
+          xcrun notarytool submit "${dmgs[0]}" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --output-format json > notary-state/submission.json
+          python3 - <<'PY'
+          import json, os, pathlib, uuid
+          data = json.loads(pathlib.Path("notary-state/submission.json").read_text())
+          submission = str(uuid.UUID(data["id"]))
+          print("Apple submission:", submission)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("id=" + submission + "\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+              output.write("## Apple notarization\n\nSubmission: `" + submission + "`\n\nSource run: `" + os.environ["GITHUB_RUN_ID"] + "`\n\nOriginal signed packages were saved before submission. If processing outlasts this run, use **macOS notarization status**, then **Recover notarized macOS package** with these IDs. Do not rebuild or resubmit the same package.\n")
+          PY
+      - name: Save submission ID before waiting
+        if: ${{ always() && inputs.notarize }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-notary-submission
+          path: notary-state/submission.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Wait at most ten minutes for Apple's decision
+        if: ${{ inputs.notarize && steps.submission.outputs.id != '' }}
+        id: notary
+        timeout-minutes: 12
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SUBMISSION_ID: ${{ steps.submission.outputs.id }}
+        run: |
+          set -euo pipefail
+          auth=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
+          # A wait timeout does not cancel Apple's submission. Query its actual
+          # status afterwards instead of treating every nonzero wait as rejection.
+          xcrun notarytool wait "$SUBMISSION_ID" "${auth[@]}" --timeout 10m --output-format json > notary-state/wait.json || true
+          xcrun notarytool info "$SUBMISSION_ID" "${auth[@]}" --output-format json > notary-state/status.json
+          status=$(python3 -c 'import json; print(json.load(open("notary-state/status.json"))["status"])')
+          printf 'status=%s\n' "$status" >> "$GITHUB_OUTPUT"
+          printf '\nApple status: **%s**\n' "$status" >> "$GITHUB_STEP_SUMMARY"
+          case "$status" in
+            Accepted)
+              xcrun notarytool log "$SUBMISSION_ID" "${auth[@]}" notary-state/log.json
+              ;;
+            'In Progress')
+              echo "::warning::Apple is still processing $SUBMISSION_ID. Original packages and submission ID are saved. Resume this submission; do not rebuild or resubmit."
+              ;;
+            *)
+              xcrun notarytool log "$SUBMISSION_ID" "${auth[@]}" notary-state/log.json || true
+              echo "Apple notarization did not succeed: $status" >&2
+              exit 1
+              ;;
+          esac
+      - name: Staple and verify accepted packages
+        if: ${{ steps.notary.outputs.status == 'Accepted' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          apps=("$bundle"/macos/*.app)
+          dmgs=("$bundle"/dmg/*.dmg)
+          app=${apps[0]}; dmg=${dmgs[0]}
+          xcrun stapler staple "$app"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          mkdir -p notarized-assets
+          cp "$dmg" notarized-assets/
+          ditto -c -k --sequesterRsrc --keepParent "$app" notarized-assets/SSY-Switch-macOS-universal.zip
+          (cd notarized-assets && shasum -a 256 -- * > SHA256SUMS.txt)
+      - name: Upload verified notarized packages
+        if: ${{ success() && steps.notary.outputs.status == 'Accepted' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssy-switch-macos-universal
+          path: notarized-assets/*
+          if-no-files-found: error
+      - name: Preserve Apple status and logs
+        if: ${{ always() && inputs.notarize }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-notary-report
+          path: notary-state/
+          if-no-files-found: warn
+          retention-days: 90
       - name: Remove temporary keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/ssy-build.keychain-db" 2>/dev/null || true

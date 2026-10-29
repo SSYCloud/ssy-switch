@@ -47,11 +47,23 @@ Export-Certificate -Cert $cert -FilePath 'C:\secure\ssy-switch-signing.cer'
 ## 运行和检查
 
 1. 在仓库 **Actions → Signed desktop builds → Run workflow** 中选择可信分支或 tag 并启动。`Notarize macOS packages` 默认开启；关闭后生成仅签名、不公证的 macOS 测试包。`Build Windows packages` 默认开启，关闭后只构建 macOS。不要对未经审查的代码运行持有签名 secrets 的工作流；所选 ref 必须已包含该工作流版本。
-2. 等待 Windows 和 macOS 任务均成功，在运行详情的 **Artifacts** 下载对应平台的安装包和 `SHA256SUMS.txt`。工作流不会将文件发布到 Release；如需发布，请先检查产物再由维护者操作。
+2. 在运行详情的 **Artifacts** 下载对应平台的安装包和 `SHA256SUMS.txt`。已公证 Mac 包的 artifact 名称为 `ssy-switch-macos-universal`；`ssy-switch-macos-universal-not-notarized` 是提前保存的原始签名包，不代表公证完成。如果 Apple 仍在处理，构建任务会结束并在 Summary 中注明 `In Progress`，此时按下方步骤查询和恢复。工作流不会将文件发布到 Release；如需发布，请先检查产物再由维护者操作。
 3. 对照 `SHA256SUMS.txt` 验证下载文件的 SHA-256。Windows 可用 `Get-FileHash -Algorithm SHA256 <文件路径>`；macOS 可用 `shasum -a 256 <文件路径>`。
 4. 已公证版本在 macOS 检查应用签名、公证及装订，例如对解压后的 `.app` 执行 `codesign --verify --deep --strict --verbose=2 <应用路径>`，并对 DMG 执行 `xcrun stapler validate <DMG路径>` 和 `spctl -a -t open --context context:primary-signature -vv <DMG路径>`。在 Windows 可用 `Get-AuthenticodeSignature <安装包路径>` 检查签名证书及状态；应与预先通过可信渠道核对的证书指纹比较。未导入自签证书的电脑可能报告证书链不受信任，即使文件签名存在。
 5. 在干净的 Windows 和 macOS 测试设备上安装、启动并检查实际系统提示。真实签名、公证和安装验证需要有效 secrets 及对应平台；仅检查工作流语法不能证明发布包已签名或通过公证。
 
 关闭公证时，macOS artifact 和文件名含 `not-notarized`。应用和 DMG 仍使用 Developer ID 签名并验证签名，但不提交 Apple 公证，也不进行装订或 Gatekeeper 通过检查。下载到其他 Mac 后，Gatekeeper 可能阻止打开；测试者可在确认来源后按系统提示到「系统设置 → 隐私与安全性」允许打开。仅签名测试包不应被当作已公证的正式分发包。
+
+### 公证等待超时后的恢复
+
+开启公证时，工作流先构建和签名，再保存原始 `.app` ZIP、DMG 和校验值，最后向 Apple 提交外层 DMG。Apple 会检查其中的已签名代码，因此不再先通过 Tauri 提交一次 app、再提交一次 DMG。提交时不等待处理结束，返回的提交 UUID 立即单独保存为 `macos-notary-submission`，并写入运行 Summary。
+
+原始签名包和提交记录保留 90 天（受仓库允许的保留期限制）。随后最多等待 10 分钟；Apple 若仍在处理，任务保留待处理状态和原包，只在 `Accepted` 且装订、Gatekeeper 检查都通过后上传已公证包。GitHub 等待超时不会取消 Apple 的提交，不应因此重复构建或提交。
+
+1. 运行 **macOS notarization status**。`submission_id` 留空会查询当前 Apple 团队的历史记录；填写 UUID 会查询该次提交，并在已完成时保存 Apple 的详细日志。此任务只查询，不上传应用。
+2. 状态为 `Accepted` 后，运行 **Recover notarized macOS package**。填写原 `submission_id`，并将 `source_run_id` 设置为保存原始签名包的 GitHub Actions 运行编号。
+3. 恢复任务会校验原包 SHA-256、Developer ID 签名，并将 Intel 和 Apple 芯片的代码签名指纹与该次 Apple 票据逐一比较。匹配后才进行装订和 Gatekeeper 检查，生成 `ssy-switch-macos-universal` 下载产物，全程不重新提交公证。旧版只提交 app ZIP 的记录仅恢复 app ZIP；提交 DMG 的记录还会验证和恢复 DMG。
+
+提交 UUID 用于查询原来的公证任务，不能给任意新包使用。若更新代码、资源或构建产物导致签名指纹变化，恢复任务会停止；只有指纹仍与已通过的票据完全一致的包才可复用。Apple 工作流说明见 [Customizing the notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
 
 来自 fork 的 pull request 默认无法使用仓库 secrets，因此不应把 PR 检查视为签名发布验证。参见 [GitHub Actions secrets 文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)。

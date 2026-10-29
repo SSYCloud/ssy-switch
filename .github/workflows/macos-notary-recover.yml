@@ -1,0 +1,118 @@
+name: Recover notarized macOS package
+
+on:
+  workflow_dispatch:
+    inputs:
+      submission_id:
+        description: Existing Accepted Apple submission UUID
+        type: string
+        required: true
+      source_run_id:
+        description: Run containing the original signed macOS artifact
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  recover:
+    runs-on: macos-14
+    environment: release
+    timeout-minutes: 15
+    steps:
+      - name: Read original Apple decision and ticket hashes
+        timeout-minutes: 4
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SUBMISSION_ID: ${{ inputs.submission_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p recovery-report
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, uuid
+          submission = str(uuid.UUID(os.environ["SUBMISSION_ID"].strip()))
+          auth = ["--apple-id", os.environ["APPLE_ID"], "--password", os.environ["APPLE_PASSWORD"], "--team-id", os.environ["APPLE_TEAM_ID"]]
+          def query(args):
+              try:
+                  result = subprocess.run(["xcrun", "notarytool", *args, *auth], capture_output=True, text=True, timeout=90)
+              except subprocess.TimeoutExpired:
+                  raise SystemExit("Apple query timed out; no new submission was created.")
+              if result.returncode:
+                  print(result.stdout + result.stderr)
+                  raise SystemExit(result.returncode)
+              return result.stdout
+          status = json.loads(query(["info", submission, "--output-format", "json"]))
+          pathlib.Path("recovery-report/status.json").write_text(json.dumps(status, indent=2) + "\n")
+          print("Original submission:", submission, "Apple status:", status.get("status"))
+          if status.get("status") != "Accepted":
+              raise SystemExit("The original submission must be Accepted before recovery.")
+          query(["log", submission, "recovery-report/log.json"])
+          PY
+      - name: Download existing signed package
+        uses: actions/download-artifact@v8
+        with:
+          name: ssy-switch-macos-universal-not-notarized
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ github.token }}
+          path: signed-package
+      - name: Match the original ticket and staple the app
+        timeout-minutes: 5
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SUBMISSION_ID: ${{ inputs.submission_id }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          (cd signed-package && shasum -a 256 -c SHA256SUMS.txt)
+          ditto -x -k signed-package/SSY-Switch-macOS-universal-not-notarized.zip recovered
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess
+          apps = list(pathlib.Path("recovered").glob("*.app"))
+          if len(apps) != 1:
+              raise SystemExit("Expected exactly one app in the original archive.")
+          app = str(apps[0])
+          subprocess.run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", app], check=True)
+          log = json.loads(pathlib.Path("recovery-report/log.json").read_text())
+          accepted = {(t.get("arch"), t.get("cdhash")) for t in log.get("ticketContents", []) if t.get("path", "").endswith(".app")}
+          hashes = {}
+          for arch in ("x86_64", "arm64"):
+              result = subprocess.run(["codesign", "--display", "--verbose=4", "--arch", arch, app], capture_output=True, text=True, check=True)
+              details = result.stdout + result.stderr
+              if "TeamIdentifier=" + os.environ["APPLE_TEAM_ID"] not in details.splitlines():
+                  raise SystemExit("App does not match the configured Developer ID team.")
+              match = re.search(r"^CDHash=([0-9a-f]+)$", details, re.MULTILINE)
+              if not match:
+                  raise SystemExit("Missing code-directory hash for " + arch)
+              hashes[arch] = match.group(1)
+              print(arch, "CDHash:", hashes[arch], "matches original:", (arch, hashes[arch]) in accepted)
+          pathlib.Path("recovery-report/package-hashes.json").write_text(json.dumps(hashes, indent=2) + "\n")
+          if not all((arch, digest) in accepted for arch, digest in hashes.items()):
+              raise SystemExit("This package differs from the accepted app. No submission was created and no notarized artifact will be published.")
+          subprocess.run(["xcrun", "stapler", "staple", app], check=True, timeout=120)
+          subprocess.run(["xcrun", "stapler", "validate", app], check=True, timeout=60)
+          subprocess.run(["spctl", "--assess", "--type", "execute", "--verbose=2", app], check=True, timeout=60)
+          pathlib.Path("release-assets").mkdir(exist_ok=True)
+          subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, "release-assets/SSY-Switch-macOS-universal.zip"], check=True)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+              output.write("## Recovered notarized app\n\nBoth architectures match the existing Apple ticket. Stapling and Gatekeeper assessment passed. No new notarization was submitted.\n\nSubmission: `" + log["jobId"] + "`\nSource run: `" + os.environ["SOURCE_RUN_ID"] + "`\n")
+          PY
+          (cd release-assets && shasum -a 256 -- * > SHA256SUMS.txt)
+      - name: Upload verified notarized app
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssy-switch-macos-universal
+          path: release-assets/*
+          if-no-files-found: error
+      - name: Preserve recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-notary-recovery-report
+          path: recovery-report/
+          if-no-files-found: warn

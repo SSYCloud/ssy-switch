@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -26,6 +27,33 @@ class IntegrityTests(unittest.TestCase):
     def test_metadata_roundtrip(self):
         self.assertEqual(release.metadata(draft()), DATA)
         self.assertIsNone(release.metadata({"body": "An unrelated release"}))
+
+    def test_published_notes_omit_submission_and_unlisted_private_fields(self):
+        data = dict(DATA, state="published", changes="## 新增\n\n- 应用内自动更新。", password="do-not-publish")
+        body = release.notes("example/repo", data)
+        self.assertIn("应用内自动更新", body)
+        for private in (DATA["submission_id"], "submission_id", "password", "do-not-publish", "actions/runs/", "Apple 公证编号"):
+            self.assertNotIn(private, body)
+        parsed = release.metadata({"body": body})
+        self.assertEqual(parsed, {key: data[key] for key in ("schema", "run_id", "sha", "version", "state")})
+
+    def test_pending_draft_retains_recovery_state_but_not_extra_fields(self):
+        data = dict(DATA, changes="本版新增更新功能。", password="do-not-publish")
+        parsed = release.metadata({"body": release.notes("example/repo", data)})
+        self.assertEqual(parsed["submission_id"], DATA["submission_id"])
+        self.assertEqual(parsed["changes"], data["changes"])
+        self.assertNotIn("password", parsed)
+
+    def test_legacy_published_metadata_still_loads(self):
+        data = dict(DATA, state="published")
+        body = f"<!-- {release.MARKER}\n{json.dumps(data)}\n-->"
+        self.assertEqual(release.metadata({"body": body}), data)
+
+    def test_pending_metadata_without_submission_is_rejected(self):
+        data = {key: value for key, value in DATA.items() if key != "submission_id"}
+        body = f"<!-- {release.MARKER}\n{json.dumps(data)}\n-->"
+        with self.assertRaises(KeyError):
+            release.metadata({"body": body})
 
     def test_manifest_checks_content_and_unlisted_files(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -91,6 +119,7 @@ class PublicationTests(unittest.TestCase):
         self.assets = patch.object(release, "prepare_assets").start()
         self.apple = patch.object(release, "apple").start()
         self.command = patch.object(release, "command").start()
+        self.changes = patch.object(release, "release_changes", return_value="## 新增\n\n- 应用内更新。").start()
         patch.object(release, "summary").start()
         self.addCleanup(patch.stopall)
 
@@ -139,6 +168,8 @@ class PublicationTests(unittest.TestCase):
         self.assertFalse(body["prerelease"])
         self.assertEqual(body["make_latest"], "true")
         self.assertEqual(release.metadata({"body": body["body"]})["state"], "published")
+        self.assertNotIn(DATA["submission_id"], body["body"])
+        self.assertEqual(body["name"], "SSY-Switch 3.20.2")
         self.assertEqual(self.command.call_args.args[0][:3], ["gh", "release", "upload"])
 
     def test_partial_upload_never_publishes(self):
@@ -161,6 +192,55 @@ class PublicationTests(unittest.TestCase):
         self.github.api.return_value = dict(draft(), draft=False)
         release.finish(self.github, draft(), DATA, self.folder)
         self.command.assert_not_called()
+
+
+class ReleaseNotesTests(unittest.TestCase):
+    def setUp(self):
+        self.github = Mock(repository="example/repo")
+        self.github.releases.return_value = [dict(draft(dict(DATA, state="published")), draft=False)]
+        self.current = dict(DATA, run_id=101, sha="b" * 40)
+
+    def editorial(self, baseline=DATA["sha"]):
+        return {"content": base64.b64encode(json.dumps({"base_sha": baseline, "body": "## 修复\n\n- 修复余额显示。"}).encode()).decode()}
+
+    def test_editorial_notes_are_read_from_the_built_commit(self):
+        self.github.api.side_effect = [[{"name": "release-notes.json"}], self.editorial()]
+        self.assertIn("修复余额显示", release.release_changes(self.github, self.current))
+        for call in self.github.api.call_args_list:
+            self.assertIn("ref=" + self.current["sha"], call.args[0])
+
+    def test_stale_notes_are_not_reused_and_build_process_is_filtered(self):
+        messages = ["feat: 支持切换账号", "fix(updater): 修复更新下载失败", "ci: notarize macOS", "fix(release): repair release notes", "docs: update guide", "Merge pull request #1", "perf: 加快启动速度"]
+        self.github.api.side_effect = [[{"name": "release-notes.json"}], self.editorial("c" * 40), {"commits": [{"commit": {"message": item}} for item in messages]}]
+        body = release.release_changes(self.github, self.current)
+        self.assertIn("支持切换账号", body)
+        self.assertIn("修复更新下载失败", body)
+        self.assertIn("加快启动速度", body)
+        for omitted in ("修复余额显示", "notarize", "repair release", "update guide", "Merge"):
+            self.assertNotIn(omitted, body)
+
+    def test_maintenance_only_release_does_not_invent_features(self):
+        self.github.api.side_effect = [[], {"commits": [{"commit": {"message": "ci: update packaging"}}]}]
+        self.assertEqual(release.release_changes(self.github, self.current), "## 更新内容\n\n维护更新。")
+
+    def test_newer_releases_are_not_used_as_comparison_baseline(self):
+        self.github.releases.return_value.append(dict(draft(dict(DATA, run_id=102, sha="c" * 40, state="published")), draft=False))
+        self.github.api.side_effect = [[{"name": "release-notes.json"}], self.editorial()]
+        self.assertIn("修复余额显示", release.release_changes(self.github, self.current))
+
+
+class StartTests(unittest.TestCase):
+    def test_retry_published_release_does_not_require_public_submission_id(self):
+        github = Mock(repository="example/repo")
+        github.releases.return_value = [dict(draft(dict(DATA, state="published")), draft=False)]
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "submission").mkdir()
+            (root / "submission/submission.json").write_text(json.dumps({"id": DATA["submission_id"]}))
+            with patch.object(release, "source_run", return_value={"head_sha": DATA["sha"], "run_number": 1}), patch.object(release, "source_config", return_value={"version": DATA["version"]}), patch.object(release, "require_artifacts"), patch.object(release, "summary"), patch.object(release, "finish") as finish:
+                release.start(github, DATA["run_id"], root)
+            finish.assert_not_called()
+            github.api.assert_not_called()
 
 
 if __name__ == "__main__":

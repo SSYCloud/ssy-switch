@@ -1,6 +1,7 @@
 """Publish complete desktop releases; resume Apple submissions without resubmitting."""
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -72,7 +73,12 @@ def metadata(release):
     if data.get("schema") not in (1, 2):
         raise ValueError("Unsupported desktop release metadata")
     data["run_id"] = int(data["run_id"])
-    data["submission_id"] = str(uuid.UUID(data["submission_id"]))
+    if data.get("state") not in ("pending", "published", "rejected"):
+        raise ValueError("Invalid desktop release state")
+    # Published releases do not expose Apple's submission identifier. Continue
+    # accepting older records while pending drafts still require it for recovery.
+    if data["state"] != "published" or "submission_id" in data:
+        data["submission_id"] = str(uuid.UUID(data["submission_id"]))
     if data["run_id"] <= 0 or not re.fullmatch(r"[0-9a-f]{40}", data["sha"]):
         raise ValueError("Invalid desktop release source")
     if not re.fullmatch(r"[0-9A-Za-z.+-]+", data["version"]):
@@ -85,21 +91,65 @@ def tag_for(data):
 
 
 def notes(repository, data):
-    state = data["state"]
-    description = {
-        "pending": "Windows 已构建，Apple 公证处理中；完成后自动补齐 macOS DMG 并发布。",
-        "published": "Windows x64 安装包与 macOS 通用版（Intel / Apple 芯片）。macOS 已签名、公证并通过 Gatekeeper 检查。",
-        "rejected": "Apple 公证未通过。此草稿不会自动发布，请查看对应公证日志。",
-    }[state]
+    # Allowlist public bookkeeping fields; never serialize the full job state.
+    saved = {key: data[key] for key in ("schema", "run_id", "sha", "version", "state")}
+    if data["state"] != "published":
+        saved["submission_id"] = data["submission_id"]
+        if "changes" in data:
+            saved["changes"] = data["changes"]
+    changes = data.get("changes", "## 更新内容\n\n维护更新。")
     return (
-        f"{description}\n\n"
-        f"- 源码：[{data['sha'][:8]}](https://github.com/{repository}/commit/{data['sha']})\n"
-        f"- 构建：[#{data['run_id']}](https://github.com/{repository}/actions/runs/{data['run_id']})\n"
-        f"- Apple 公证编号：`{data['submission_id']}`\n"
-        "- Windows 使用自签名证书，首次运行可能出现系统提示。\n"
-        "- 下载后可用 `SHA256SUMS.txt` 核对文件完整性。\n\n"
-        f"<!-- {MARKER}\n{json.dumps(data, sort_keys=True)}\n-->\n"
+        f"{changes.strip()}\n\n"
+        "## 下载\n\n"
+        "- **Windows 64 位**：下载下方的 `x64-setup.exe` 安装包。\n"
+        "- **macOS**：下载下方的 `universal.dmg`，同时支持 Intel 和 Apple 芯片。\n\n"
+        f"<!-- {MARKER}\n{json.dumps(saved, sort_keys=True)}\n-->\n"
     )
+
+
+def release_changes(github, data):
+    previous = []
+    for item in github.releases():
+        saved = metadata(item)
+        if not item["draft"] and not item["prerelease"] and saved and saved["run_id"] < data["run_id"]:
+            previous.append(saved)
+    baseline = max(previous, key=lambda item: item["run_id"])["sha"] if previous else None
+    # Read editorial notes from the source being released, never a newer main.
+    entries = github.api(f"contents/.github?ref={data['sha']}")
+    if any(item["name"] == "release-notes.json" for item in entries):
+        source = github.api(f"contents/.github/release-notes.json?ref={data['sha']}")
+        editorial = json.loads(base64.b64decode(source["content"]))
+        if editorial.get("base_sha") == baseline:
+            body = editorial.get("body")
+            if not isinstance(body, str) or not body.strip():
+                raise ValueError("Release notes must describe the user-facing changes")
+            return body.strip()
+    if not baseline:
+        return "## 更新内容\n\n首次发布 SSY-Switch 桌面版。"
+    # Do not repeat last release's highlights when its editorial file is stale.
+    groups = {"feat": [], "fix": [], "perf": [], "other": []}
+    page = 1
+    while True:
+        comparison = github.api(f"compare/{baseline}...{data['sha']}?per_page=100&page={page}")
+        commits = comparison["commits"]
+        for commit in commits:
+            subject = commit["commit"]["message"].splitlines()[0]
+            parsed = re.match(r"^(\w+)(?:\(([^)]+)\))?!?:\s*(.+)$", subject)
+            if parsed:
+                kind, scope, text = parsed.groups()
+                if kind not in ("feat", "fix", "perf", "revert") or scope in ("ci", "build", "release", "deps"):
+                    continue
+                groups[kind if kind in groups else "other"].append(text)
+            elif not re.match(r"(?i)^(merge\b|ci(?:[- :]|$)|build\b|docs\b|test\b|chore\b)", subject):
+                groups["other"].append(subject)
+        if len(commits) < 100:
+            break
+        page += 1
+    sections = []
+    for key, heading in (("feat", "新增"), ("fix", "修复"), ("perf", "优化"), ("other", "其他更新")):
+        if groups[key]:
+            sections.append(f"## {heading}\n\n" + "\n".join(f"- {text}" for text in dict.fromkeys(groups[key])))
+    return "\n\n".join(sections) or "## 更新内容\n\n维护更新。"
 
 
 def summary(message):
@@ -250,6 +300,8 @@ def finish(github, release, data, folder):
         raise ValueError(f"Apple rejected {data['submission_id']}: {status}; draft was not published")
     if log.get("jobId") != data["submission_id"] or log.get("status") != "Accepted":
         raise ValueError("Apple log does not match the accepted submission")
+    if "changes" not in data:
+        data = dict(data, changes=release_changes(github, data))
     assets = prepare_assets(github, data, folder, log)
     # Only drafts are mutable. A retry can replace partial uploads before publish.
     current = github.api(f"releases/{release['id']}")
@@ -264,7 +316,8 @@ def finish(github, release, data, folder):
         raise ValueError("Release uploads are incomplete or contain unexpected files; draft retained")
     data = dict(data, state="published")
     result = github.api(f"releases/{release['id']}", method="PATCH", body={
-        "draft": False, "prerelease": False, "body": notes(github.repository, data),
+        "draft": False, "prerelease": False, "name": f"SSY-Switch {data['version']}",
+        "body": notes(github.repository, data),
         "make_latest": "true" if should_be_latest(data, github.releases()) else "false",
     })
     summary(f"Published Windows installers and notarized macOS DMG: {result['html_url']}")
@@ -284,16 +337,20 @@ def start(github, run_id, folder):
     existing = next((r for r in github.releases() if r["tag_name"] == tag_for(data)), None)
     if existing:
         saved = metadata(existing)
-        if not saved or any(saved[k] != data[k] for k in ("run_id", "sha", "version", "submission_id")):
+        if not saved or any(saved[k] != data[k] for k in ("run_id", "sha", "version")):
             raise ValueError("Existing release belongs to different build artifacts")
         if not existing["draft"]:
             summary(f"Already published: {existing['html_url']}")
             return
+        if saved.get("submission_id") != submission:
+            raise ValueError("Existing release belongs to different build artifacts")
+        data["changes"] = saved.get("changes") or release_changes(github, data)
         release = existing
     else:
+        data["changes"] = release_changes(github, data)
         release = github.api("releases", method="POST", body={
             "tag_name": tag_for(data), "target_commitish": data["sha"],
-            "name": f"SSY-Switch {version} · build {run_id} · {data['sha'][:8]}",
+            "name": f"SSY-Switch {version}",
             "body": notes(github.repository, data), "draft": True, "prerelease": False,
         })
     finish(github, release, data, folder)

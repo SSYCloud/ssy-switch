@@ -1,7 +1,28 @@
 #![allow(non_snake_case)]
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
+
+static UPDATE_INSTALLING: AtomicBool = AtomicBool::new(false);
+
+struct UpdateInstallGuard;
+
+impl UpdateInstallGuard {
+    fn acquire() -> Result<Self, String> {
+        UPDATE_INSTALLING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| "已有更新正在下载或安装".to_string())?;
+        Ok(Self)
+    }
+}
+
+impl Drop for UpdateInstallGuard {
+    fn drop(&mut self) {
+        UPDATE_INSTALLING.store(false, Ordering::Release);
+    }
+}
 
 /// 应用更新下载进度（通过 `update-download-progress` 事件发给前端）。
 #[derive(Clone, serde::Serialize)]
@@ -195,19 +216,33 @@ pub async fn restart_app(app: AppHandle) -> Result<bool, String> {
 /// `process.relaunch()`，旧进程可能已经处在 bundle 被替换后的不稳定窗口期。
 /// 这里把退出清理、安装和重启串在同一个后端流程中，避免依赖旧前端继续执行。
 #[tauri::command]
-pub async fn install_update_and_restart(app: AppHandle) -> Result<bool, String> {
+pub async fn install_update_and_restart(
+    app: AppHandle,
+    expected_version: Option<String>,
+) -> Result<bool, String> {
+    let _guard = UpdateInstallGuard::acquire()?;
     let updater = app
         .updater_builder()
+        .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| format!("初始化更新器失败: {e}"))?;
 
-    let Some(update) = updater
+    let Some(mut update) = updater
         .check()
         .await
         .map_err(|e| format!("检查更新失败: {e}"))?
     else {
         return Ok(false);
     };
+
+    if expected_version
+        .as_deref()
+        .is_some_and(|version| version != update.version)
+    {
+        return Err("可用版本已变化，请重新检查更新后再安装".to_string());
+    }
+    // Download gets a longer bound than the small manifest request.
+    update.timeout = Some(Duration::from_secs(600));
 
     log::info!("开始下载应用更新: {}", update.version);
     let progress_handle = app.clone();
@@ -230,6 +265,7 @@ pub async fn install_update_and_restart(app: AppHandle) -> Result<bool, String> 
         .map_err(|e| format!("下载更新失败: {e}"))?;
 
     log::info!("开始安装应用更新: {}", update.version);
+    let _ = app.emit("update-installing", ());
 
     #[cfg(target_os = "windows")]
     {
@@ -275,6 +311,7 @@ pub async fn install_update_and_restart(app: AppHandle) -> Result<bool, String> 
 pub async fn check_app_update_available(app: AppHandle) -> Result<Option<String>, String> {
     let updater = app
         .updater_builder()
+        .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| format!("初始化更新器失败: {e}"))?;
     let update = updater

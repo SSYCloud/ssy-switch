@@ -914,7 +914,11 @@
       "done": "导入完成：新增 {{n}} 个供应商，跳过已有 {{skip}} 个。导入的卡片均未激活，请在列表中手动启用。",
       "backup": "已自动备份本地数据",
       "notFound": "未找到原版 CC Switch 数据库（~/.cc-switch/cc-switch.db）"
-    }
+    },
+    "autoUpdateHint": "启动时及每 6 小时自动检查更新。点击更新后下载、校验签名并重启应用。",
+    "downloadingUpdate": "正在下载更新…",
+    "installingUpdate": "正在安装，即将重启…",
+    "downloadProgress": "已下载 {{downloaded}} / {{total}} MB"
   },
   "apps": {
     "claude": "Claude",

@@ -914,7 +914,11 @@
       "done": "Imported {{n}} providers, skipped {{skip}} existing. Imported cards are inactive — enable them manually in the list.",
       "backup": "Local data backed up automatically",
       "notFound": "Original CC Switch database not found (~/.cc-switch/cc-switch.db)"
-    }
+    },
+    "autoUpdateHint": "Checks at startup and every 6 hours. Update downloads, verifies the signature, and restarts the app.",
+    "downloadingUpdate": "Downloading update…",
+    "installingUpdate": "Installing and restarting…",
+    "downloadProgress": "Downloaded {{downloaded}} / {{total}} MB"
   },
   "apps": {
     "claude": "Claude",

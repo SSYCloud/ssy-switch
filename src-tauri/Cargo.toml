@@ -1,6 +1,6 @@
 [package]
 name = "ssy-switch"
-version = "3.20.2"
+version = "3.21.0"
 description = "Shengsuanyun desktop client for Claude Code, Codex & Gemini CLI"
 authors = ["Shengsuanyun"]
 license = "MIT"

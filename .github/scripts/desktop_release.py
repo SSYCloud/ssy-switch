@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+from build_version import release_version
 
 
 MARKER = "ssy-desktop-release"
@@ -18,17 +19,18 @@ MAC_ARTIFACT = "ssy-switch-macos-universal-not-notarized"
 WINDOWS_ARTIFACT = "ssy-switch-windows-x64"
 
 
-def command(args, *, input_text=None, timeout=180):
+def command(args, *, input_text=None, timeout=180, env=None, sensitive=False):
     try:
         result = subprocess.run(
             [str(arg) for arg in args], input=input_text, capture_output=True,
-            text=True, timeout=timeout,
+            text=True, timeout=timeout, env=env,
         )
     except subprocess.TimeoutExpired:
         # Do not include the command line: Apple credentials are arguments.
         raise RuntimeError(f"{args[0]} operation timed out") from None
     if result.returncode:
-        print(result.stdout + result.stderr, flush=True)
+        if not sensitive:
+            print(result.stdout + result.stderr, flush=True)
         raise RuntimeError(f"{args[0]} operation failed (exit {result.returncode})")
     return result.stdout + result.stderr if args[0] == "codesign" else result.stdout
 
@@ -67,7 +69,7 @@ def metadata(release):
     if not match:
         return None
     data = json.loads(match.group(1))
-    if data.get("schema") != 1:
+    if data.get("schema") not in (1, 2):
         raise ValueError("Unsupported desktop release metadata")
     data["run_id"] = int(data["run_id"])
     data["submission_id"] = str(uuid.UUID(data["submission_id"]))
@@ -182,6 +184,10 @@ def prepare_assets(github, data, folder, log):
         raise ValueError("This submission does not cover the distributable DMG")
     command(["ditto", "-x", "-k", app_zip, folder / "unpacked"])
     app = exactly_one(folder / "unpacked", "*.app")
+    if data["schema"] == 2:
+        version = command(["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", app / "Contents/Info.plist"]).strip()
+        if version != data["version"] or any(f"_{version}_" not in p.name for p in (exe, msi, dmg)):
+            raise ValueError("Installer version does not match this release")
     command(["codesign", "--verify", "--deep", "--strict", "--verbose=2", app])
     hashes = {}
     for arch in ("x86_64", "arm64"):
@@ -207,6 +213,10 @@ def prepare_assets(github, data, folder, log):
         shutil.copy2(path, assets / path.name)
     shutil.copy2(dmg, assets / dmg.name.replace("-not-notarized.dmg", ".dmg"))
     command(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, assets / "SSY-Switch-macOS-universal.zip"])
+    if data["schema"] == 2:
+        from updater_assets import prepare_updates
+        config = source_config(github, data["sha"])
+        prepare_updates(command, assets, app, github.repository, tag_for(data), data["version"], config["plugins"]["updater"]["pubkey"])
     lines = [hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.name for p in sorted(assets.iterdir())]
     (assets / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n")
     return assets
@@ -267,10 +277,10 @@ def start(github, run_id, folder):
     github.download(run_id, "macos-notary-submission", state)
     submission = str(uuid.UUID(json.loads((state / "submission.json").read_text())["id"]))
     # Read version from the source commit, including when resumed on a newer main.
-    config = github.api(f"contents/src-tauri/tauri.conf.json?ref={run['head_sha']}")
-    import base64
-    version = json.loads(base64.b64decode(config["content"]))["version"]
-    data = {"schema": 1, "run_id": run_id, "sha": run["head_sha"], "version": version, "submission_id": submission, "state": "pending"}
+    config = source_config(github, run["head_sha"])
+    updater_enabled = bool(config.get("plugins", {}).get("updater", {}).get("pubkey"))
+    version = release_version(config["version"], run["run_number"]) if updater_enabled else config["version"]
+    data = {"schema": 2 if updater_enabled else 1, "run_id": run_id, "sha": run["head_sha"], "version": version, "submission_id": submission, "state": "pending"}
     existing = next((r for r in github.releases() if r["tag_name"] == tag_for(data)), None)
     if existing:
         saved = metadata(existing)
@@ -287,6 +297,12 @@ def start(github, run_id, folder):
             "body": notes(github.repository, data), "draft": True, "prerelease": False,
         })
     finish(github, release, data, folder)
+
+
+def source_config(github, sha):
+    import base64
+    config = github.api(f"contents/src-tauri/tauri.conf.json?ref={sha}")
+    return json.loads(base64.b64decode(config["content"]))
 
 
 def resume(github):

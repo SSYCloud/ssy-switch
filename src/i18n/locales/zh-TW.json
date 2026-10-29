@@ -904,7 +904,11 @@
       "defaultCostMultiplierRequired": "預設倍率不能為空",
       "defaultCostMultiplierInvalid": "預設倍率格式不正確"
     },
-    "saveFailedGeneric": "儲存失敗，請重試"
+    "saveFailedGeneric": "儲存失敗，請重試",
+    "autoUpdateHint": "啟動時及每 6 小時自動檢查更新。點擊更新後下載、驗證簽章並重新啟動。",
+    "downloadingUpdate": "正在下載更新…",
+    "installingUpdate": "正在安裝，即將重新啟動…",
+    "downloadProgress": "已下載 {{downloaded}} / {{total}} MB"
   },
   "apps": {
     "claude": "Claude",

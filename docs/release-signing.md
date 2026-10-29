@@ -1,5 +1,30 @@
 # 自动发布与手动打包
 
+## 应用内更新
+
+从 3.21 系列起，应用在启动一秒后和每六小时检查本仓库的 `releases/latest/download/latest.json`。用户在「设置 → 关于」点击更新后，界面显示下载进度，后端验证更新签名、执行原有退出清理并安装重启。网络、签名或安装失败会显示错误并提供手动下载页；便携模式继续使用手动下载。3.20.2 及更早的 SSY-Switch 发行包关闭了更新器，需要手动安装一次 3.21 系列后才能使用此功能。
+
+自动发布的实际版本为 `源码主版本.源码次版本.(源码补丁号 + Actions run_number)`。例如源码 `3.21.0` 的第 2 次运行产生 `3.21.2`；这会同步写入本次构建的 Tauri 配置、package.json 和 Cargo 包版本，但不回写 Git。保持源码补丁号基线不变，开启新的版本线时提高主版本或次版本，避免回退版本号。脚本会拒绝超出 Windows MSI 范围的版本号。重跑同一次运行沿用同一个版本。
+
+发布任务在 Apple 公证和装订完成后，从已验证的 `.app` 生成 `SSY-Switch.app.tar.gz`，为它和 Windows EXE/MSI 生成 `.sig`，校验签名与应用内置公钥一致，然后生成 `latest.json`。Intel 与 Apple 芯片共用 Mac 通用更新包；Windows 清单同时提供 NSIS、MSI 和兼容入口。DMG 仍用于首次安装。`createUpdaterArtifacts` 保持 false，因为自动更新包由发布任务在公证装订**之后**制作和签名，避免使用 Tauri 构建阶段尚未装订的更新包。
+
+更新签名采用独立的 Tauri Minisign 密钥；Apple P12 只用于 macOS 代码签名。GitHub Secrets 另需：
+
+| Secret | 内容 |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | Tauri signer 生成的加密私钥文件内容，仅发布和恢复发布任务读取 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 更新私钥的独立随机密码 |
+
+公钥位于 `src-tauri/tauri.conf.json`，允许公开。私钥和密码不得提交到源码、日志或 artifacts。当前本机备份位于用户目录 `.ssy-switch/signing/`，目录权限仅授予当前用户和 SYSTEM；私钥已加密，密码备份由 Windows DPAPI 保护。此备份应由发布负责人妥善保管，换机器或账号前需安全迁移；随意更换更新公钥会使旧客户端无法验证新包。仓库有发布权限的维护者需要持续保护工作流代码和 Secrets。
+
+本地验证新增签名测试前安装 `PyNaCl==1.6.2`。验证命令：
+
+```sh
+python -m unittest discover -s .github/scripts -p 'test_*.py' -v
+pnpm exec vitest run tests/lib/updater.test.ts tests/contexts/UpdateContext.test.tsx
+pnpm run typecheck
+```
+
 ## 主分支自动发布
 
 `.github/workflows/desktop-release.yml` 在每次推送到 `main` 时运行，合并 PR 到 `main` 也会触发；无需手动创建 tag。它先运行发布逻辑测试，再调用已有的签名构建工作流，并将同一提交的 Windows x64 `.exe`、`.msi` 和已公证的 macOS 通用 `.dmg`、`.app` ZIP 发布到 GitHub Releases。

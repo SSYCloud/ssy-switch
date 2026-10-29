@@ -26,10 +26,20 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Install updater signing tools
+        run: |
+          npm install --global @tauri-apps/cli@2.8.1
+          python3 -m venv "$RUNNER_TEMP/updater-tools"
+          "$RUNNER_TEMP/updater-tools/bin/pip" install pynacl==1.6.2
       - name: Finish existing notarizations and publish complete releases
         env:
           GH_TOKEN: ${{ github.token }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: python3 .github/scripts/desktop_release.py --pending
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: '"$RUNNER_TEMP/updater-tools/bin/python" .github/scripts/desktop_release.py --pending'

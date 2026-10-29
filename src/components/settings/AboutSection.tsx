@@ -228,7 +228,6 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
   const [isLoadingVersion, setIsLoadingVersion] = useState(
     () => appVersionCache === null,
   );
-  const [isDownloading, setIsDownloading] = useState(false);
   const [toolVersions, setToolVersions] = useState<ToolVersion[]>(
     () => toolVersionsCache?.data ?? [],
   );
@@ -245,8 +244,17 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
   );
   const [showInstallCommands, setShowInstallCommands] = useState(false);
 
-  const { hasUpdate, updateInfo, checkUpdate, resetDismiss, isChecking } =
-    useUpdate();
+  const {
+    hasUpdate,
+    updateInfo,
+    checkUpdate,
+    resetDismiss,
+    isChecking,
+    isDownloading,
+    isInstalling,
+    progress,
+    installUpdate,
+  } = useUpdate();
 
   const [wslShellByTool, setWslShellByTool] = useState<
     Record<string, WslShellPreference>
@@ -438,28 +446,14 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
 
   const handleOpenReleaseNotes = useCallback(async () => {
     try {
-      const targetVersion = updateInfo?.availableVersion ?? version ?? "";
-      const displayVersion = targetVersion.startsWith("v")
-        ? targetVersion
-        : targetVersion
-          ? `v${targetVersion}`
-          : "";
-
-      if (!displayVersion) {
-        await settingsApi.openExternal(
-          "https://github.com/farion1231/cc-switch/releases",
-        );
-        return;
-      }
-
       await settingsApi.openExternal(
-        `https://github.com/farion1231/cc-switch/releases/tag/${displayVersion}`,
+        "https://github.com/SSYCloud/ssy-switch/releases/latest",
       );
     } catch (error) {
       console.error("[AboutSection] Failed to open release notes", error);
       toast.error(t("settings.openReleaseNotesFailed"));
     }
-  }, [t, updateInfo?.availableVersion, version]);
+  }, [t]);
 
   const handleCheckUpdate = useCallback(async () => {
     if (hasUpdate) {
@@ -472,10 +466,9 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
         return;
       }
 
-      setIsDownloading(true);
       try {
         resetDismiss();
-        const installed = await settingsApi.installUpdateAndRestart();
+        const installed = await installUpdate();
         if (!installed) {
           toast.success(t("settings.upToDate"), { closeButton: true });
         }
@@ -493,8 +486,6 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
             fallbackError,
           );
         }
-      } finally {
-        setIsDownloading(false);
       }
       return;
     }
@@ -511,7 +502,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
         closeButton: true,
       });
     }
-  }, [checkUpdate, hasUpdate, isPortable, resetDismiss, t]);
+  }, [checkUpdate, hasUpdate, installUpdate, isPortable, resetDismiss, t]);
 
   const handleCopyInstallCommands = useCallback(async () => {
     try {
@@ -906,7 +897,9 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => settingsApi.openExternal("https://www.shengsuanyun.com")}
+              onClick={() =>
+                settingsApi.openExternal("https://www.shengsuanyun.com")
+              }
               className="h-8 gap-1.5 text-xs"
             >
               <Globe className="h-3.5 w-3.5" />
@@ -918,7 +911,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               size="sm"
               onClick={() =>
                 settingsApi.openExternal(
-                  "https://github.com/farion1231/cc-switch",
+                  "https://github.com/SSYCloud/ssy-switch",
                 )
               }
               className="h-8 gap-1.5 text-xs"
@@ -946,7 +939,11 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               {isDownloading ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t("settings.updating")}
+                  {t(
+                    isInstalling
+                      ? "settings.installingUpdate"
+                      : "settings.downloadingUpdate",
+                  )}
                 </>
               ) : hasUpdate ? (
                 <>
@@ -969,6 +966,38 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
             </Button>
           </div>
         </div>
+
+        <p className="text-xs text-muted-foreground">
+          {t("settings.autoUpdateHint")}
+        </p>
+        {isDownloading && (
+          <div className="space-y-2" role="status" aria-live="polite">
+            <p className="text-sm">
+              {isInstalling
+                ? t("settings.installingUpdate")
+                : t("settings.downloadProgress", {
+                    downloaded: ((progress?.downloaded ?? 0) / 1048576).toFixed(
+                      1,
+                    ),
+                    total: progress?.total
+                      ? (progress.total / 1048576).toFixed(1)
+                      : "—",
+                  })}
+            </p>
+            {!isInstalling && (
+              <progress
+                className="h-2 w-full accent-primary"
+                max={progress?.total || undefined}
+                value={
+                  progress?.total
+                    ? Math.min(progress.downloaded, progress.total)
+                    : undefined
+                }
+                aria-label={t("settings.downloadingUpdate")}
+              />
+            )}
+          </div>
+        )}
 
         {hasUpdate && updateInfo && (
           <motion.div

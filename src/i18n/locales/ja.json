@@ -903,7 +903,11 @@
       "defaultCostMultiplierRequired": "デフォルト倍率は必須です",
       "defaultCostMultiplierInvalid": "デフォルト倍率の形式が正しくありません"
     },
-    "saveFailedGeneric": "保存に失敗しました。もう一度お試しください"
+    "saveFailedGeneric": "保存に失敗しました。もう一度お試しください",
+    "autoUpdateHint": "起動時と6時間ごとに更新を確認します。更新ボタンでダウンロード、署名検証、再起動を行います。",
+    "downloadingUpdate": "更新をダウンロード中…",
+    "installingUpdate": "インストールして再起動中…",
+    "downloadProgress": "{{downloaded}} / {{total}} MB ダウンロード済み"
   },
   "apps": {
     "claude": "Claude",

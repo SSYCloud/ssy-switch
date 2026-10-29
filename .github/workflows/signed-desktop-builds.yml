@@ -9,6 +9,9 @@ on:
       build_windows:
         type: boolean
         default: true
+      automatic_release:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       notarize:
@@ -34,6 +37,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Assign automatic release version
+        if: inputs.automatic_release
+        env:
+          RELEASE_RUN_NUMBER: ${{ github.run_number }}
+        run: python3 .github/scripts/build_version.py --run-number "$RELEASE_RUN_NUMBER"
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
@@ -247,6 +255,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Assign automatic release version
+        if: inputs.automatic_release
+        env:
+          RELEASE_RUN_NUMBER: ${{ github.run_number }}
+        run: python .github/scripts/build_version.py --run-number $env:RELEASE_RUN_NUMBER
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version

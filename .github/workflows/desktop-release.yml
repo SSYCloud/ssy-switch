@@ -1,0 +1,53 @@
+name: Automatic desktop release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Test release safety and recovery
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
+
+  build:
+    needs: verify
+    if: github.repository == 'SSYCloud/ssy-switch' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/signed-desktop-builds.yml
+    with:
+      notarize: true
+      build_windows: true
+    secrets: inherit
+
+  publish:
+    needs: build
+    runs-on: macos-14
+    environment: release
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: desktop-release-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Publish verified installers or preserve a pending draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: python3 .github/scripts/desktop_release.py --run-id "$SOURCE_RUN_ID"

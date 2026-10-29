@@ -1,6 +1,14 @@
 name: Signed desktop builds
 
 on:
+  workflow_call:
+    inputs:
+      notarize:
+        type: boolean
+        default: true
+      build_windows:
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       notarize:

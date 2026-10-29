@@ -1,0 +1,35 @@
+name: Resume pending desktop releases
+
+on:
+  schedule:
+    - cron: '23,53 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resume:
+    if: github.repository == 'SSYCloud/ssy-switch'
+    runs-on: macos-14
+    environment: release
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: desktop-release-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Finish existing notarizations and publish complete releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: python3 .github/scripts/desktop_release.py --pending

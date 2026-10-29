@@ -1,4 +1,22 @@
-# 手动打包与签名
+# 自动发布与手动打包
+
+## 主分支自动发布
+
+`.github/workflows/desktop-release.yml` 在每次推送到 `main` 时运行，合并 PR 到 `main` 也会触发；无需手动创建 tag。它先运行发布逻辑测试，再调用已有的签名构建工作流，并将同一提交的 Windows x64 `.exe`、`.msi` 和已公证的 macOS 通用 `.dmg`、`.app` ZIP 发布到 GitHub Releases。
+
+每次构建使用独立的 tag：`v<应用版本>-build.<Actions运行编号>`，例如 `v3.20.2-build.123456789`。tag 指向该次构建的确切提交；Release 名称和说明包含源码提交与构建链接。只有全部安装包签名校验、公证及上传检查通过后，Release 才会从草稿变为正式发布。较旧构建晚完成时，不会覆盖更新构建的 Latest 标记。
+
+Apple 尚未完成公证时，原包、提交 UUID 和 Release 草稿都会保留。`.github/workflows/desktop-release-resume.yml` 每半小时查询待处理草稿，使用已保存的原包和原提交编号完成装订、检查和发布；该任务没有重新提交公证的命令，也可以手动运行。Apple 拒绝的构建保持草稿并报告错误。定时任务的实际启动时间可能受 GitHub 调度影响。
+
+发布任务共用串行队列（最多排队 100 个），不会取消已经进行的发布；构建任务可并行执行。签名、公证沿用下方的 `release` 环境和 secrets，无需把个人 GitHub token 配置为发布凭据。发布任务使用 GitHub 自动提供的 `GITHUB_TOKEN`，仅在发布阶段授予 `contents: write` 和 `actions: read`。
+
+发布逻辑位于 `.github/scripts/desktop_release.py`。本地回归检查：
+
+```sh
+python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
+```
+
+## 手动打包
 
 仓库的 `Signed desktop builds` 工作流位于独立的 `.github/workflows/signed-desktop-builds.yml`，通过 GitHub Actions 手动构建 Windows x64 和 macOS 通用版本，产物保存在该次运行的 Actions artifacts 中，不会自动创建或修改 GitHub Release。它不改变原有的 `.github/workflows/release.yml` 多平台发布流程。工作流需先存在于仓库默认分支，才会出现在 Actions 的手动运行菜单；运行时选择的可信分支或 tag 同时决定工作流代码和构建代码。
 

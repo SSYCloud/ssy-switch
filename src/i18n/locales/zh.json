@@ -3282,6 +3282,8 @@
     "refresh": "刷新"
   },
   "shengsuanyun": {
+    "personalLogin": "个人账号登录",
+    "enterpriseLogin": "企业子账号登录",
     "login": "用胜算云账号登录（无需复制 Key）",
     "pending": "已在浏览器中打开授权页，请完成登录…",
     "cancel": "取消登录",

@@ -3282,6 +3282,8 @@
     "refresh": "Refresh"
   },
   "shengsuanyun": {
+    "personalLogin": "Personal account login",
+    "enterpriseLogin": "Enterprise subaccount login",
     "login": "Log in with Shengsuanyun (no API key copy-paste)",
     "pending": "Authorization page opened in your browser. Please finish logging in…",
     "cancel": "Cancel login",

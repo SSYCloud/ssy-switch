@@ -3271,6 +3271,8 @@
     "refresh": "更新"
   },
   "shengsuanyun": {
+    "personalLogin": "個人アカウントでログイン",
+    "enterpriseLogin": "企業サブアカウントでログイン",
     "login": "勝算クラウドアカウントでログイン（Key のコピー不要）",
     "pending": "認証ページをブラウザで開きました。ログインを完了してください…",
     "cancel": "ログインをキャンセル",

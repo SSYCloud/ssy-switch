@@ -3272,6 +3272,8 @@
     "refresh": "重新整理"
   },
   "shengsuanyun": {
+    "personalLogin": "個人帳號登入",
+    "enterpriseLogin": "企業子帳號登入",
     "login": "用勝算雲帳號登入（無需複製 Key）",
     "pending": "已在瀏覽器開啟授權頁，請完成登入…",
     "cancel": "取消登入",

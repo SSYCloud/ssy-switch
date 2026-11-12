@@ -9,7 +9,6 @@ import type { QuotaTier } from "@/types/subscription";
 import { isAdditiveAppId } from "@/config/appConfig";
 import { analyticsApi } from "@/lib/api/analytics";
 import { shengsuanyunApi } from "@/lib/api/shengsuanyun";
-import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import {
   markRechargeOpened,
@@ -175,14 +174,10 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   // 此时（isError）仍要渲染失败态给出重试入口，否则 footer 整体消失、无从重查。
   if (!usageEnabled) return null;
 
-  // 胜算云未登录：不显示"剩余 0.00"误导信息，改为登录入口（与登录横幅同一 OAuth 流程：
-  // 浏览器完成授权后自动绑定 Key，并跳转 设置→登录/认证 展示进度）
+  // 未登录时打开认证中心，由用户选择个人账号或企业子账号。
   if (isSsy && ssyLoggedIn === false) {
     const startSsyLogin = (e: React.MouseEvent) => {
       e.stopPropagation();
-      void startLoginFlow(appId, "usage_card").catch((err) =>
-        console.error("start shengsuanyun login failed", err),
-      );
       window.dispatchEvent(
         new CustomEvent("ssy-open-auth", { detail: { appId } }),
       );

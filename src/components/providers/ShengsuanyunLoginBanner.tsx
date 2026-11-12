@@ -2,8 +2,8 @@
 // 已登录后自动隐藏（账号管理仍在 设置 → 认证中心）。
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyRound, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Sparkles } from "lucide-react";
+import { ShengsuanyunLoginButtons } from "./ShengsuanyunLoginButtons";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { shengsuanyunApi } from "@/lib/api/shengsuanyun";
@@ -17,6 +17,7 @@ export function ShengsuanyunLoginBanner({
 }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState<boolean | null>(null);
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -75,24 +76,20 @@ export function ShengsuanyunLoginBanner({
             )}
           </p>
         </div>
-        <Button
+        <ShengsuanyunLoginButtons
           size="lg"
-          className="bg-emerald-600 hover:bg-emerald-500"
-          onClick={() => {
-            // 直接发起 OAuth（打开浏览器授权页），登录完成后由全局桥自动绑定；
-            // 同时跳转认证中心展示进度
+          disabled={starting}
+          onLogin={(scope) => {
+            setStarting(true);
             void analyticsApi.track("recharge_clicked", { entry: "banner" }).catch(() => {});
-            startLoginFlow(appId, "banner").catch((e) =>
-              console.error("start shengsuanyun login failed", e),
-            );
+            void startLoginFlow(appId, "banner", scope)
+              .catch((e) => console.error("start shengsuanyun login failed", e))
+              .finally(() => setStarting(false));
             window.dispatchEvent(
               new CustomEvent("ssy-open-auth", { detail: { appId } }),
             );
           }}
-        >
-          <KeyRound className="mr-2 h-4 w-4" />
-          {t("shengsuanyun.bannerCta", { defaultValue: "用胜算云账号登录" })}
-        </Button>
+        />
       </div>
     </div>
   );

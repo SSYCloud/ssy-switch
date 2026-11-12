@@ -36,6 +36,7 @@ pub async fn shengsuanyun_start_login(
     state: State<'_, ShengsuanyunState>,
     target_app: Option<String>,
     target_provider_id: Option<String>,
+    account_scope: Option<AccountScope>,
 ) -> Result<LoginStart, String> {
     let mut active = state.active_callback.lock().await;
     // 已有登录流程则先终止（端口随旧 server 作废，state 同时失效）
@@ -46,8 +47,13 @@ pub async fn shengsuanyun_start_login(
     let port = server.port;
     let start = state
         .manager
-        .start_login(port, target_app, target_provider_id)
-        .await;
+        .start_account_login(
+            port,
+            target_app,
+            target_provider_id,
+            account_scope.unwrap_or(AccountScope::Main),
+        )
+        .await?;
     state.manager.drop_expired().await;
     *active = Some(server);
     log::info!("shengsuanyun oauth started (loopback port {port})");

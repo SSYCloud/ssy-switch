@@ -22,6 +22,8 @@ export interface ShengsuanyunLoginStart {
   sessionId: string;
 }
 
+export type ShengsuanyunAccountScope = "main" | "sub";
+
 export interface ShengsuanyunBindResult {
   status: "ok" | "conflict";
   providerId: string | null;
@@ -61,10 +63,12 @@ export interface ShengsuanyunBinding {
 export function startShengsuanyunLogin(
   targetApp?: string | null,
   targetProviderId?: string | null,
+  accountScope: ShengsuanyunAccountScope = "main",
 ): Promise<ShengsuanyunLoginStart> {
   return invoke("shengsuanyun_start_login", {
     targetApp: targetApp ?? null,
     targetProviderId: targetProviderId ?? null,
+    accountScope,
   });
 }
 

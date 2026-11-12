@@ -13,6 +13,7 @@ import {
   bindShengsuanyunAccount,
   bindShengsuanyunAllApps,
   listShengsuanyunAccounts,
+  type ShengsuanyunAccountScope,
 } from "./api/shengsuanyun";
 
 /** 最近一次登录携带的目标 app（OAuth 完成后绑定用；null = 三端全绑） */
@@ -28,6 +29,7 @@ let bridgeInstalled = false;
 export async function startLoginFlow(
   appId?: string | null,
   source = "unknown",
+  accountScope: ShengsuanyunAccountScope = "main",
 ): Promise<{ authorizationUrl: string; sessionId: string }> {
   lastBindApp = appId ?? null;
   void analyticsApi.track("login_started", { app: appId ?? null, source });
@@ -37,6 +39,7 @@ export async function startLoginFlow(
   }>("shengsuanyun_start_login", {
     targetApp: appId ?? null,
     targetProviderId: null,
+    accountScope,
   });
   // 通知 UI（认证中心面板若挂载则进入 pending 态）
   window.dispatchEvent(

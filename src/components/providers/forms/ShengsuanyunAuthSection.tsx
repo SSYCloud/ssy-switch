@@ -10,9 +10,11 @@ import { Button } from "@/components/ui/button";
 import {
   shengsuanyunApi,
   type ShengsuanyunAccount,
+  type ShengsuanyunAccountScope,
 } from "@/lib/api/shengsuanyun";
 import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
 import { startLoginFlow } from "@/lib/shengsuanyunFlow";
+import { ShengsuanyunLoginButtons } from "../ShengsuanyunLoginButtons";
 import { analyticsApi } from "@/lib/api/analytics";
 import { ShengsuanyunUsageStats } from "./ShengsuanyunUsageStats";
 import { ShengsuanyunBillList } from "./ShengsuanyunBillList";
@@ -71,6 +73,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const [vouchersOpen, setVouchersOpen] = useState(false);
   const [health, setHealth] = useState<{ app: string; ok: boolean } | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const loginChoicesRef = useRef<HTMLDivElement | null>(null);
   // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
   const bindAppRef = useRef<string | null>(targetApp ?? null);
 
@@ -212,13 +215,16 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     };
   }, [reload]);
 
-  const startLogin = async (overrideApp?: string) => {
+  const startLogin = async (
+    overrideApp?: string,
+    accountScope: ShengsuanyunAccountScope = "main",
+  ) => {
     setBusy(true);
     setError(null);
     try {
       const app = overrideApp ?? targetApp;
       bindAppRef.current = app ?? null;
-      await startLoginFlow(app, "auth_center");
+      await startLoginFlow(app, "auth_center", accountScope);
       // pending 态由 ssy-login-pending 事件驱动（flow 内已派发）
     } catch (e) {
       setPhase("error");
@@ -336,6 +342,11 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   };
 
   const loginPending = phase === "pending";
+  const chooseLoginType = () => {
+    setError(null);
+    loginChoicesRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    loginChoicesRef.current?.querySelector("button")?.focus();
+  };
 
   return (
     <div className="space-y-4">
@@ -370,17 +381,13 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         </div>
       )}
 
-      {accounts.length === 0 && !loginPending && (
-        <Button onClick={() => startLogin()} disabled={busy}>
-          {busy ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <LogIn className="mr-2 h-4 w-4" />
-          )}
-          {t("shengsuanyun.login", {
-            defaultValue: "用胜算云账号登录（无需复制 Key）",
-          })}
-        </Button>
+      {!loginPending && (
+        <div ref={loginChoicesRef}>
+          <ShengsuanyunLoginButtons
+            onLogin={(scope) => void startLogin(undefined, scope)}
+            disabled={busy}
+          />
+        </div>
       )}
 
       {loginPending && (
@@ -484,7 +491,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => startLogin()}
+              onClick={chooseLoginType}
             >
               {t("shengsuanyun.relogin", { defaultValue: "重新登录" })}
             </Button>
@@ -587,7 +594,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             </Button>
           )}
           {describeError(error).action === "relogin" && (
-            <Button size="sm" onClick={() => startLogin()} disabled={busy}>
+            <Button size="sm" onClick={chooseLoginType} disabled={busy}>
               <LogIn className="mr-1 h-4 w-4" />
               {t("shengsuanyun.relogin", { defaultValue: "重新登录" })}
             </Button>

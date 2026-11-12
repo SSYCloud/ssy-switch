@@ -109,6 +109,24 @@ pub async fn shengsuanyun_refresh_balance(
     state.manager.refresh_balance(&account_id).await
 }
 
+/// 仅转发 SDK 校验后的预算视图，不向前端传递模型 Key 或身份凭据。
+#[derive(serde::Serialize)]
+pub struct EnterpriseBudgetView {
+    #[serde(flatten)]
+    budget: ssy_core::EnterpriseBudget,
+    remaining_cny: Option<f64>,
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn shengsuanyun_enterprise_budget(
+    state: State<'_, ShengsuanyunState>,
+    account_id: String,
+) -> Result<EnterpriseBudgetView, String> {
+    let budget = state.manager.enterprise_budget(&account_id).await?;
+    let remaining_cny = budget.remaining_cny();
+    Ok(EnterpriseBudgetView { budget, remaining_cny })
+}
+
 /// 充值/账单流水（分页；Asset/Balance 单位 1e-4 元）。
 #[tauri::command(rename_all = "camelCase")]
 pub async fn shengsuanyun_bill_list(

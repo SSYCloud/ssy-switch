@@ -1657,6 +1657,7 @@ pub fn run() {
             commands::shengsuanyun_list_accounts,
             commands::shengsuanyun_get_status,
             commands::shengsuanyun_refresh_balance,
+            commands::shengsuanyun_enterprise_budget,
             commands::shengsuanyun_logout,
             commands::shengsuanyun_list_keys,
             commands::shengsuanyun_reveal_key,

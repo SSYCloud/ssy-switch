@@ -37,10 +37,15 @@ describe("verified account identity presentation", () => {
   });
 
   it("shows enterprise subaccount identity after login and does not offer personal wallet actions", async () => {
-    vi.mocked(invoke).mockResolvedValue([account]);
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "shengsuanyun_enterprise_budget")
+        throw new Error("Budget unavailable in identity test");
+      return [account];
+    });
     const first = render(<ShengsuanyunAuthSection />);
     expect(await screen.findByText("企业网关账号 · 子账号")).toBeVisible();
     expect(screen.getByText("使用企业项目预算")).toBeVisible();
+    expect(screen.getByRole("region", { name: "企业项目预算" })).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "充值" }),
     ).not.toBeInTheDocument();

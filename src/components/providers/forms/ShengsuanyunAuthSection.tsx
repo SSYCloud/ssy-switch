@@ -22,6 +22,7 @@ import { analyticsApi } from "@/lib/api/analytics";
 import { ShengsuanyunUsageStats } from "./ShengsuanyunUsageStats";
 import { ShengsuanyunBillList } from "./ShengsuanyunBillList";
 import { ShengsuanyunVoucherList } from "./ShengsuanyunVoucherList";
+import { ShengsuanyunEnterpriseBudget } from "./ShengsuanyunEnterpriseBudget";
 import {
   markRechargeOpened,
   shouldRefreshOnFocus,
@@ -556,6 +557,9 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             ))}
           </div>
           </div>
+          {a.accountType === "enterprise" && a.accountRole === "sub" && (
+            <ShengsuanyunEnterpriseBudget account={a} />
+          )}
         </div>
       ))}
 

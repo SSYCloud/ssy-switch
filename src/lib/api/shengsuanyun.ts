@@ -100,6 +100,26 @@ export function refreshShengsuanyunBalance(accountId: string): Promise<number> {
   return invoke("shengsuanyun_refresh_balance", { accountId });
 }
 
+/** 子账号在登录所选项目中的预算；金额已经是人民币元。 */
+export interface ShengsuanyunEnterpriseBudget {
+  scope: "account_in_project";
+  project_id: number;
+  ram_user_id: number;
+  budget_kind: string;
+  period_kind: string;
+  period_start: string;
+  period_end: string;
+  period_consumed_cny: number;
+  period_limit_cny: number | null;
+  remaining_cny: number | null;
+  remaining_percentage: number | null;
+  unlimited: boolean;
+}
+
+export function getShengsuanyunEnterpriseBudget(accountId: string): Promise<ShengsuanyunEnterpriseBudget> {
+  return invoke("shengsuanyun_enterprise_budget", { accountId });
+}
+
 export function logoutShengsuanyun(accountId: string): Promise<void> {
   return invoke("shengsuanyun_logout", { accountId });
 }
@@ -281,6 +301,7 @@ export const shengsuanyunApi = {
   listAccounts: listShengsuanyunAccounts,
   getStatus: getShengsuanyunStatus,
   refreshBalance: refreshShengsuanyunBalance,
+  getEnterpriseBudget: getShengsuanyunEnterpriseBudget,
   logout: logoutShengsuanyun,
   bindAccount: bindShengsuanyunAccount,
   bindAllApps: bindShengsuanyunAllApps,

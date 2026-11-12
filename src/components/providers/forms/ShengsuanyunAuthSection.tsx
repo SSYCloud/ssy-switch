@@ -11,10 +11,13 @@ import {
   shengsuanyunApi,
   type ShengsuanyunAccount,
   type ShengsuanyunAccountScope,
+  type ShengsuanyunOAuthComplete,
 } from "@/lib/api/shengsuanyun";
 import { invalidateSsyAccountsCache } from "./shared/SsyKeyPicker";
 import { startLoginFlow } from "@/lib/shengsuanyunFlow";
 import { ShengsuanyunLoginButtons } from "../ShengsuanyunLoginButtons";
+import { ShengsuanyunAccountBadge } from "../ShengsuanyunAccountBadge";
+import { hasPersonalWallet } from "@/lib/shengsuanyunAccount";
 import { analyticsApi } from "@/lib/api/analytics";
 import { ShengsuanyunUsageStats } from "./ShengsuanyunUsageStats";
 import { ShengsuanyunBillList } from "./ShengsuanyunBillList";
@@ -66,6 +69,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<ShengsuanyunAccount[]>([]);
+  const [completedAccount, setCompletedAccount] = useState<ShengsuanyunAccount | null>(null);
   const [busy, setBusy] = useState(false);
   const [intent, setIntent] = useState<OAuthIntent | null>(null);
   const [statsOpen, setStatsOpen] = useState(false);
@@ -87,7 +91,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       if (!shouldRefreshOnFocus(now)) return;
       if (now - lastBalanceRefreshRef.current < 20_000) return;
       const account = accountsRef.current[0];
-      if (!account) return;
+      if (!account || !hasPersonalWallet(account)) return;
       lastBalanceRefreshRef.current = now;
       void refreshBalanceSilent(account.id);
     };
@@ -144,6 +148,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       sessionIdRef.current = detail.sessionId;
       setPhase("pending");
       setError(null);
+      setCompletedAccount(null);
     };
     window.addEventListener("ssy-login-pending", onPending);
     const onLoginRequestCompat = (ev: Event) => {
@@ -163,9 +168,10 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     let disposed = false;
 
     (async () => {
-      offComplete = await listen("shengsuanyun-oauth-complete", () => {
+      offComplete = await listen<ShengsuanyunOAuthComplete>("shengsuanyun-oauth-complete", (event) => {
         setPhase("idle");
         setError(null);
+        setCompletedAccount(event.payload.account);
         void reload();
         // 自动绑定由全局桥（shengsuanyunFlow）处理
       });
@@ -390,6 +396,16 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         </div>
       )}
 
+      {completedAccount && accounts.some((a) => a.id === completedAccount.id) && (
+        <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm">
+          <span>{t("shengsuanyun.loginSuccessAccount", {
+            defaultValue: "登录成功，当前登录账号：{{name}}",
+            name: completedAccount.displayName || completedAccount.uidMasked,
+          })}</span>
+          <ShengsuanyunAccountBadge account={completedAccount} />
+        </div>
+      )}
+
       {loginPending && (
         <div className="space-y-2 rounded-lg border border-border/60 bg-muted/40 p-4 text-sm">
           <div className="flex items-center gap-2">
@@ -412,8 +428,9 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-4"
         >
           <div className="min-w-0">
-            <div className="truncate font-medium">
-              {a.displayName || a.uidMasked}
+            <div className="flex flex-wrap items-center gap-2 font-medium">
+              <span className="truncate">{a.displayName || a.uidMasked}</span>
+              <ShengsuanyunAccountBadge account={a} />
               {a.isCreator && (
                 <span className="ml-2 text-xs text-muted-foreground">
                   Creator
@@ -422,13 +439,15 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             </div>
             <div className="text-sm text-muted-foreground">
               {a.emailMasked && <span className="mr-3">{a.emailMasked}</span>}
-              <span>
+              {hasPersonalWallet(a) ? <span>
                 {t("shengsuanyun.balance", { defaultValue: "余额" })}:{" "}
                 {a.balanceYuan != null
                   ? `¥${a.balanceYuan.toFixed(2)}`
                   : "—"}
-              </span>
-              {a.voucherYuan != null && (
+              </span> : <span>{a.accountType === "enterprise"
+                ? t("shengsuanyun.enterpriseBudgetHint", { defaultValue: "使用企业项目预算" })
+                : t("shengsuanyun.accountIdentityHint", { defaultValue: "重新登录以确认账号身份" })}</span>}
+              {hasPersonalWallet(a) && a.voucherYuan != null && (
                 <span className="ml-2">
                   {t("shengsuanyun.voucher", { defaultValue: "体验券" })}:{" "}
                   ¥{a.voucherYuan.toFixed(2)}
@@ -438,6 +457,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
           </div>
           <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
+            {hasPersonalWallet(a) && <>
             <Button
               variant="outline"
               size="sm"
@@ -487,6 +507,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
+            </>}
             <Button
               variant="outline"
               size="sm"
@@ -495,7 +516,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             >
               {t("shengsuanyun.relogin", { defaultValue: "重新登录" })}
             </Button>
-            <Button
+            {hasPersonalWallet(a) && <Button
               size="sm"
               className="bg-emerald-600 hover:bg-emerald-500"
               disabled={busy}
@@ -504,7 +525,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             >
               <Wallet className="mr-1 h-4 w-4" />
               {t("shengsuanyun.recharge", { defaultValue: "充值" })}
-            </Button>
+            </Button>}
             <Button
               variant="outline"
               size="sm"
@@ -539,7 +560,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       ))}
 
       {/* 额度不足提醒（立项 P0：额度提醒） */}
-      {accounts.some((a) => a.balanceYuan != null && a.balanceYuan < 10) && (
+      {accounts.some((a) => hasPersonalWallet(a) && a.balanceYuan != null && a.balanceYuan < 10) && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700 dark:text-orange-300">
           <span>
             {t("shengsuanyun.lowBalance", {

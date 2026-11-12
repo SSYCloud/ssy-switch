@@ -20,6 +20,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { ssyAccountLabel } from "@/lib/shengsuanyunAccount";
 import {
   shengsuanyunApi,
   type ShengsuanyunAccount,
@@ -228,6 +229,9 @@ export function SsyKeyPicker({
                 activeAccount?.emailMasked ||
                 "胜算云"}
             </div>
+            {activeAccount && <div className="text-[11px] text-muted-foreground">
+              {ssyAccountLabel(t, activeAccount)}
+            </div>}
             <div className="truncate text-[11px] text-muted-foreground">
               {activeAccount?.balanceYuan != null
                 ? t("shengsuanyun.keyPicker.balance", {
@@ -271,6 +275,7 @@ export function SsyKeyPicker({
                 />
                 <span className="truncate">
                   {a.displayName || a.emailMasked || a.uidMasked}
+                  <span className="ml-2 text-muted-foreground">{ssyAccountLabel(t, a)}</span>
                 </span>
               </button>
             ))}

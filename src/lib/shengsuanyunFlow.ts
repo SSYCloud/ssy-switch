@@ -12,12 +12,9 @@ import type { AppId } from "./api/types";
 import {
   bindShengsuanyunAccount,
   bindShengsuanyunAllApps,
-  listShengsuanyunAccounts,
   type ShengsuanyunAccountScope,
+  type ShengsuanyunOAuthComplete,
 } from "./api/shengsuanyun";
-
-/** 最近一次登录携带的目标 app（OAuth 完成后绑定用；null = 三端全绑） */
-let lastBindApp: string | null = null;
 
 /** 桥是否已安装（App 生命周期内一次） */
 let bridgeInstalled = false;
@@ -31,7 +28,6 @@ export async function startLoginFlow(
   source = "unknown",
   accountScope: ShengsuanyunAccountScope = "main",
 ): Promise<{ authorizationUrl: string; sessionId: string }> {
-  lastBindApp = appId ?? null;
   void analyticsApi.track("login_started", { app: appId ?? null, source });
   const start = await invoke<{
     authorizationUrl: string;
@@ -51,16 +47,14 @@ export async function startLoginFlow(
   return start;
 }
 
-/** OAuth 完成：自动绑定最近一次登录的目标 app（无目标则三端全绑）。 */
-async function handleOAuthComplete(): Promise<void> {
+/** 绑定 SDK 完成事件中的确切账号和目标，不能按账号列表顺序猜测。 */
+async function handleOAuthComplete(payload: ShengsuanyunOAuthComplete): Promise<void> {
   try {
-    const accounts = await listShengsuanyunAccounts();
-    const latest = accounts[accounts.length - 1];
-    if (!latest) return;
-    const app = lastBindApp;
+    if (!payload.account?.id) throw new Error("Login result is missing an account");
+    const app = payload.appType;
     const results = app
-      ? [await bindShengsuanyunAccount(app, latest.id)]
-      : await bindShengsuanyunAllApps(latest.id);
+      ? [await bindShengsuanyunAccount(app, payload.account.id)]
+      : await bindShengsuanyunAllApps(payload.account.id);
     for (const r of results) {
       void analyticsApi.track("bind_completed", {
         app: app ?? null,
@@ -95,8 +89,6 @@ async function handleOAuthComplete(): Promise<void> {
     window.dispatchEvent(
       new CustomEvent("ssy-bind-error", { detail: String(e) }),
     );
-  } finally {
-    lastBindApp = null;
   }
 }
 
@@ -105,7 +97,7 @@ export async function installGlobalLoginBridge(): Promise<void> {
   if (bridgeInstalled) return;
   bridgeInstalled = true;
   const { listen } = await import("@tauri-apps/api/event");
-  await listen("shengsuanyun-oauth-complete", () => {
-    void handleOAuthComplete();
+  await listen<ShengsuanyunOAuthComplete>("shengsuanyun-oauth-complete", (event) => {
+    void handleOAuthComplete(event.payload);
   });
 }

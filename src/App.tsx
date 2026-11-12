@@ -34,7 +34,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   shengsuanyunApi,
   type ShengsuanyunAccount,
+  type ShengsuanyunOAuthComplete,
 } from "@/lib/api/shengsuanyun";
+import { ssyAccountLabel } from "@/lib/shengsuanyunAccount";
 import type { Provider, VisibleApps } from "@/types";
 import type { EnvConflict } from "@/types/env";
 import { proxyKeys, useProvidersQuery, useSettingsQuery } from "@/lib/query";
@@ -196,10 +198,12 @@ function App() {
   const [ssyAccount, setSsyAccount] = useState<ShengsuanyunAccount | null>(
     null,
   );
+  const [ssyAccountCount, setSsyAccountCount] = useState(0);
   const refreshSsyAccount = useCallback(async () => {
     try {
       const accounts = await shengsuanyunApi.listAccounts();
-      setSsyAccount(accounts[0] ?? null);
+      setSsyAccountCount(accounts.length);
+      setSsyAccount(accounts.length === 1 ? accounts[0] : null);
     } catch {
       /* Tauri IPC 不可用（纯浏览器调试）时不显示登录态 */
     }
@@ -214,7 +218,14 @@ function App() {
       window.removeEventListener("focus", onFocus);
     };
   }, [refreshSsyAccount]);
-  useTauriEvent("shengsuanyun-oauth-complete", () => {
+  useTauriEvent<ShengsuanyunOAuthComplete>("shengsuanyun-oauth-complete", (payload) => {
+    if (payload.account) {
+      toast.success(t("shengsuanyun.loginSuccessIdentity", {
+        defaultValue: "登录成功：{{name}}（{{identity}}）",
+        name: payload.account.displayName || payload.account.uidMasked,
+        identity: ssyAccountLabel(t, payload.account),
+      }));
+    }
     void refreshSsyAccount();
   });
 
@@ -1433,15 +1444,20 @@ function App() {
                     setCurrentView("settings");
                   }}
                   title={
-                    ssyAccount ? t("common.personalCenter") : t("common.accountLogin")
+                    ssyAccount ? ssyAccountLabel(t, ssyAccount) : t("common.accountLogin")
                   }
                   className="h-9 gap-1.5 px-3 hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <User className="w-4 h-4" />
-                  <span className="max-w-[10rem] truncate">
+                  <span className="flex min-w-0 flex-col items-start leading-tight">
+                  <span className="max-w-[12rem] truncate">
                     {ssyAccount
                       ? (ssyAccount.displayName || ssyAccount.uidMasked)
-                      : t("common.accountLogin")}
+                      : ssyAccountCount > 1
+                        ? t("shengsuanyun.loggedInAccounts", { defaultValue: "已登录 {{count}} 个账号", count: ssyAccountCount })
+                        : t("common.accountLogin")}
+                  </span>
+                  {ssyAccount && <span className="text-[10px] text-muted-foreground">{ssyAccountLabel(t, ssyAccount)}</span>}
                   </span>
                 </Button>
                 <UpdateBadge

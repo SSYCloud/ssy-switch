@@ -4,6 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface ShengsuanyunAccount {
   id: string;
+  /** SDK 根据已核验身份提供；旧版本缺失时显示待确认。 */
+  accountType?: "personal" | "enterprise" | "unknown";
+  accountRole?: "main" | "sub" | "unknown";
   uidMasked: string;
   displayName: string;
   emailMasked: string;
@@ -15,6 +18,12 @@ export interface ShengsuanyunAccount {
   voucherYuan: number | null;
   balanceUpdatedAt: number | null;
   createdAt: number;
+}
+
+export interface ShengsuanyunOAuthComplete {
+  account: ShengsuanyunAccount;
+  appType: string | null;
+  providerId: string | null;
 }
 
 export interface ShengsuanyunLoginStart {

@@ -27,3 +27,13 @@ class PrivateCommandTests(unittest.TestCase):
     def test_missing_command_fails_closed(self):
         with self.assertRaises(ValueError):
             run([])
+
+    def test_only_safe_failure_identifiers_are_reported(self):
+        output = io.StringIO()
+        code = "print('test public_tests::budget ... FAILED'); print('private assertion body'); print('error[E0063]: private fields'); raise SystemExit(1)"
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(run([sys.executable, "-c", code]), 1)
+        self.assertIn("public_tests::budget", output.getvalue())
+        self.assertIn("E0063", output.getvalue())
+        self.assertNotIn("private assertion", output.getvalue())
+        self.assertNotIn("private fields", output.getvalue())

@@ -11,7 +11,7 @@ permissions:
 jobs:
   resume:
     if: github.repository == 'SSYCloud/ssy-switch'
-    runs-on: macos-14
+    runs-on: macos-15
     environment: release
     timeout-minutes: 30
     permissions:

@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   status:
-    runs-on: macos-14
+    runs-on: macos-15
     environment: release
     timeout-minutes: 10
     steps:

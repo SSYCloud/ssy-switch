@@ -1,6 +1,6 @@
 //! 胜算云模块（SSY-Switch 壳层适配）。
 //!
-//! 核心逻辑在 `ssy-core` crate（workspace 成员）；本模块提供：
+//! 核心逻辑在 `ssy-core` 私有依赖；本模块提供：
 //! - SQLite 存储适配（实现 SDK 的 CredentialStore / AccountStore）
 //! - Tauri 事件适配（实现 SDK 的 LoginEvents）
 //! - 应用专属：默认用量脚本、Provider 绑定、Grok Build 配置

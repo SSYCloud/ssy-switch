@@ -88,7 +88,10 @@ export function CcSwitchImportGuide() {
           <div className="flex items-center gap-2 text-sm font-semibold">
             {t("ccswitchGuide.title", { defaultValue: "cc-switch 一键导入" })}
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={preview.sourcePath}>
+          <p
+            className="mt-0.5 truncate text-xs text-muted-foreground"
+            title={preview.sourcePath}
+          >
             {t("ccswitchGuide.body", {
               total: preview.total,
               defaultValue:

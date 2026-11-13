@@ -116,7 +116,9 @@ export interface ShengsuanyunEnterpriseBudget {
   unlimited: boolean;
 }
 
-export function getShengsuanyunEnterpriseBudget(accountId: string): Promise<ShengsuanyunEnterpriseBudget> {
+export function getShengsuanyunEnterpriseBudget(
+  accountId: string,
+): Promise<ShengsuanyunEnterpriseBudget> {
   return invoke("shengsuanyun_enterprise_budget", { accountId });
 }
 
@@ -206,7 +208,10 @@ export interface BillEntry {
   BillSubType: string;
 }
 
-export function getBillList(page = 1, pageSize = 10): Promise<{ bills: BillEntry[] }> {
+export function getBillList(
+  page = 1,
+  pageSize = 10,
+): Promise<{ bills: BillEntry[] }> {
   return invoke("shengsuanyun_bill_list", { page, pageSize });
 }
 

@@ -48,9 +48,12 @@ export async function startLoginFlow(
 }
 
 /** 绑定 SDK 完成事件中的确切账号和目标，不能按账号列表顺序猜测。 */
-async function handleOAuthComplete(payload: ShengsuanyunOAuthComplete): Promise<void> {
+async function handleOAuthComplete(
+  payload: ShengsuanyunOAuthComplete,
+): Promise<void> {
   try {
-    if (!payload.account?.id) throw new Error("Login result is missing an account");
+    if (!payload.account?.id)
+      throw new Error("Login result is missing an account");
     const app = payload.appType;
     const results = app
       ? [await bindShengsuanyunAccount(app, payload.account.id)]
@@ -97,7 +100,10 @@ export async function installGlobalLoginBridge(): Promise<void> {
   if (bridgeInstalled) return;
   bridgeInstalled = true;
   const { listen } = await import("@tauri-apps/api/event");
-  await listen<ShengsuanyunOAuthComplete>("shengsuanyun-oauth-complete", (event) => {
-    void handleOAuthComplete(event.payload);
-  });
+  await listen<ShengsuanyunOAuthComplete>(
+    "shengsuanyun-oauth-complete",
+    (event) => {
+      void handleOAuthComplete(event.payload);
+    },
+  );
 }

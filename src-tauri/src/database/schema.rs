@@ -1677,12 +1677,7 @@ impl Database {
         }
         // 旧表可能早于 voucher_assets 引入（v18/v19 时期的库），先幂等补列，
         // 下面的 INSERT…SELECT 才能统一按含该列的形状复制。
-        Self::add_column_if_missing(
-            conn,
-            "shengsuanyun_accounts",
-            "voucher_assets",
-            "INTEGER",
-        )?;
+        Self::add_column_if_missing(conn, "shengsuanyun_accounts", "voucher_assets", "INTEGER")?;
         conn.execute("DROP TABLE IF EXISTS shengsuanyun_accounts_v21", [])?;
         conn.execute(
             "CREATE TABLE shengsuanyun_accounts_v21 (

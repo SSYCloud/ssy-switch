@@ -1848,4 +1848,5 @@ const keepOfficialPreset = (p: (typeof ALL_providerPresets)[number]): boolean =>
   p.name === "Gemini Native" ||
   p.name === "OpenCode Go";
 
-export const providerPresets: ProviderPreset[] = ALL_providerPresets.filter(keepOfficialPreset);
+export const providerPresets: ProviderPreset[] =
+  ALL_providerPresets.filter(keepOfficialPreset);

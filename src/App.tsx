@@ -218,16 +218,21 @@ function App() {
       window.removeEventListener("focus", onFocus);
     };
   }, [refreshSsyAccount]);
-  useTauriEvent<ShengsuanyunOAuthComplete>("shengsuanyun-oauth-complete", (payload) => {
-    if (payload.account) {
-      toast.success(t("shengsuanyun.loginSuccessIdentity", {
-        defaultValue: "登录成功：{{name}}（{{identity}}）",
-        name: payload.account.displayName || payload.account.uidMasked,
-        identity: ssyAccountLabel(t, payload.account),
-      }));
-    }
-    void refreshSsyAccount();
-  });
+  useTauriEvent<ShengsuanyunOAuthComplete>(
+    "shengsuanyun-oauth-complete",
+    (payload) => {
+      if (payload.account) {
+        toast.success(
+          t("shengsuanyun.loginSuccessIdentity", {
+            defaultValue: "登录成功：{{name}}（{{identity}}）",
+            name: payload.account.displayName || payload.account.uidMasked,
+            identity: ssyAccountLabel(t, payload.account),
+          }),
+        );
+      }
+      void refreshSsyAccount();
+    },
+  );
 
   // 应用内充值对话框（全局单实例）
   const [rechargeOpen, setRechargeOpen] = useState(false);
@@ -1258,7 +1263,10 @@ function App() {
       className="flex flex-col h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30 pb-4"
       style={{ overflowX: "hidden", paddingTop: contentTopOffset }}
     >
-      <ShengsuanyunRechargeDialog open={rechargeOpen} onClose={() => setRechargeOpen(false)} />
+      <ShengsuanyunRechargeDialog
+        open={rechargeOpen}
+        onClose={() => setRechargeOpen(false)}
+      />
       {(dragBarHeight > 0 || useAppWindowControls) && (
         <div
           className="fixed top-0 left-0 right-0 z-[70] flex items-center justify-end px-2"
@@ -1444,20 +1452,29 @@ function App() {
                     setCurrentView("settings");
                   }}
                   title={
-                    ssyAccount ? ssyAccountLabel(t, ssyAccount) : t("common.accountLogin")
+                    ssyAccount
+                      ? ssyAccountLabel(t, ssyAccount)
+                      : t("common.accountLogin")
                   }
                   className="h-9 gap-1.5 px-3 hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <User className="w-4 h-4" />
                   <span className="flex min-w-0 flex-col items-start leading-tight">
-                  <span className="max-w-[12rem] truncate">
-                    {ssyAccount
-                      ? (ssyAccount.displayName || ssyAccount.uidMasked)
-                      : ssyAccountCount > 1
-                        ? t("shengsuanyun.loggedInAccounts", { defaultValue: "已登录 {{count}} 个账号", count: ssyAccountCount })
-                        : t("common.accountLogin")}
-                  </span>
-                  {ssyAccount && <span className="text-[10px] text-muted-foreground">{ssyAccountLabel(t, ssyAccount)}</span>}
+                    <span className="max-w-[12rem] truncate">
+                      {ssyAccount
+                        ? ssyAccount.displayName || ssyAccount.uidMasked
+                        : ssyAccountCount > 1
+                          ? t("shengsuanyun.loggedInAccounts", {
+                              defaultValue: "已登录 {{count}} 个账号",
+                              count: ssyAccountCount,
+                            })
+                          : t("common.accountLogin")}
+                    </span>
+                    {ssyAccount && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {ssyAccountLabel(t, ssyAccount)}
+                      </span>
+                    )}
                   </span>
                 </Button>
                 <UpdateBadge

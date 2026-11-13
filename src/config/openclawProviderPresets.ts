@@ -3755,10 +3755,13 @@ const ALL_openclawProviderPresets: OpenClawProviderPreset[] = [
 ];
 
 // SSY-Switch: 供应商预设收敛为胜算云 + 各原厂官方入口（产品决策 2026-09-18）。
-const keepOfficialPreset = (p: (typeof ALL_openclawProviderPresets)[number]): boolean =>
+const keepOfficialPreset = (
+  p: (typeof ALL_openclawProviderPresets)[number],
+): boolean =>
   p.category === "official" ||
   p.name === "Shengsuanyun" ||
   p.partnerPromotionKey === "shengsuanyun" ||
   (p as { requiresOAuth?: boolean }).requiresOAuth === true;
 
-export const openclawProviderPresets: OpenClawProviderPreset[] = ALL_openclawProviderPresets.filter(keepOfficialPreset);
+export const openclawProviderPresets: OpenClawProviderPreset[] =
+  ALL_openclawProviderPresets.filter(keepOfficialPreset);

@@ -70,10 +70,7 @@ export function ShengsuanyunLoginBanner({
             {t("shengsuanyun.bannerBody", {
               defaultValue:
                 "无需复制 API Key{0}。浏览器登录胜算云账号后自动绑定并激活。",
-            }).replace(
-              "{0}",
-              appName ? `，直接在 ${appName} 中使用` : "",
-            )}
+            }).replace("{0}", appName ? `，直接在 ${appName} 中使用` : "")}
           </p>
         </div>
         <ShengsuanyunLoginButtons
@@ -81,7 +78,9 @@ export function ShengsuanyunLoginBanner({
           disabled={starting}
           onLogin={(scope) => {
             setStarting(true);
-            void analyticsApi.track("recharge_clicked", { entry: "banner" }).catch(() => {});
+            void analyticsApi
+              .track("recharge_clicked", { entry: "banner" })
+              .catch(() => {});
             void startLoginFlow(appId, "banner", scope)
               .catch((e) => console.error("start shengsuanyun login failed", e))
               .finally(() => setStarting(false));

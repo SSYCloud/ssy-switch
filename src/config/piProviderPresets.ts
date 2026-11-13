@@ -2158,4 +2158,5 @@ const keepOfficialPreset = (p: PiProviderPreset): boolean =>
   p.name === "Shengsuanyun" ||
   p.partnerPromotionKey === "shengsuanyun";
 
-export const piProviderPresets = ALL_piProviderPresets.filter(keepOfficialPreset);
+export const piProviderPresets =
+  ALL_piProviderPresets.filter(keepOfficialPreset);

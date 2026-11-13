@@ -11,7 +11,6 @@ import {
   type ModalityUsageResponse,
 } from "@/lib/api/shengsuanyun";
 
-
 function fmtDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -27,7 +26,9 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<13 | 29>(13);
   const [summary, setSummary] = useState<UsageSummary | null>(null);
-  const [modalities, setModalities] = useState<ModalityUsageResponse | null>(null);
+  const [modalities, setModalities] = useState<ModalityUsageResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +55,6 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
     void load(range);
   }, [range, load]);
 
-
   return (
     <div className="mt-3 rounded-lg border border-border/60 p-4 text-sm">
       <div className="mb-3 flex items-center justify-between">
@@ -71,7 +71,10 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
               className="h-7 px-2 text-xs"
               onClick={() => setRange(r)}
             >
-              {t("shengsuanyun.lastDays", { defaultValue: "近 {{n}} 天", n: r + 1 })}
+              {t("shengsuanyun.lastDays", {
+                defaultValue: "近 {{n}} 天",
+                n: r + 1,
+              })}
             </Button>
           ))}
           <Button
@@ -115,7 +118,9 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
           <div className="mb-4 space-y-1.5">
             {(!summary || summary.daily.length === 0) && (
               <p className="text-xs text-muted-foreground">
-                {t("shengsuanyun.noUsage", { defaultValue: "区间内无调用记录" })}
+                {t("shengsuanyun.noUsage", {
+                  defaultValue: "区间内无调用记录",
+                })}
               </p>
             )}
             {(summary?.daily ?? []).map((d) => {
@@ -124,22 +129,22 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
                 0.0001,
               );
               return (
-              <div key={d.date} className="flex items-center gap-2 text-xs">
-                <span className="w-20 shrink-0 tabular-nums text-muted-foreground">
-                  {d.date.slice(5)}
-                </span>
-                <div className="h-3 flex-1 overflow-hidden rounded bg-muted">
-                  <div
-                    className="h-full rounded bg-emerald-500/70"
-                    style={{
-                      width: `${Math.max(2, (d.amount_yuan / maxDaily) * 100)}%`,
-                    }}
-                  />
+                <div key={d.date} className="flex items-center gap-2 text-xs">
+                  <span className="w-20 shrink-0 tabular-nums text-muted-foreground">
+                    {d.date.slice(5)}
+                  </span>
+                  <div className="h-3 flex-1 overflow-hidden rounded bg-muted">
+                    <div
+                      className="h-full rounded bg-emerald-500/70"
+                      style={{
+                        width: `${Math.max(2, (d.amount_yuan / maxDaily) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="w-16 shrink-0 text-right tabular-nums">
+                    ¥{d.amount_yuan.toFixed(2)}
+                  </span>
                 </div>
-                <span className="w-16 shrink-0 text-right tabular-nums">
-                  ¥{d.amount_yuan.toFixed(2)}
-                </span>
-              </div>
               );
             })}
           </div>
@@ -194,7 +199,7 @@ export function ShengsuanyunUsageStats({ onClose }: { onClose: () => void }) {
                         </td>
                         <td className="py-1 pr-2">{d.model}</td>
                         <td className="py-1 text-right tabular-nums">
-                          ¥{(d.amount_yuan).toFixed(4)}
+                          ¥{d.amount_yuan.toFixed(4)}
                         </td>
                       </tr>
                     )),

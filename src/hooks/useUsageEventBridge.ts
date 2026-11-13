@@ -27,7 +27,9 @@ export function useUsageEventBridge() {
           if (!localStorage.getItem("ssy:first_call_tracked")) {
             localStorage.setItem("ssy:first_call_tracked", "1");
             void import("@/lib/api/analytics").then((m) =>
-              m.analyticsApi.track("call_succeeded", { first: true }).catch(() => {}),
+              m.analyticsApi
+                .track("call_succeeded", { first: true })
+                .catch(() => {}),
             );
           }
         } catch {

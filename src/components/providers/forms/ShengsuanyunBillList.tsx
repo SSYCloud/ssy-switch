@@ -19,8 +19,10 @@ export function ShengsuanyunBillList({ onClose }: { onClose: () => void }) {
   const fmtYuan = (v: number) => `¥${(v / 10_000).toFixed(2)}`;
   const fmtTime = (iso: string) => iso.replace("T", " ").slice(0, 16);
   const subTypeText = (sub: string) => {
-    if (sub.includes("wechat")) return t("shengsuanyun.payWechat", { defaultValue: "微信支付" });
-    if (sub.includes("alipay")) return t("shengsuanyun.payAlipay", { defaultValue: "支付宝" });
+    if (sub.includes("wechat"))
+      return t("shengsuanyun.payWechat", { defaultValue: "微信支付" });
+    if (sub.includes("alipay"))
+      return t("shengsuanyun.payAlipay", { defaultValue: "支付宝" });
     return sub;
   };
 
@@ -98,7 +100,9 @@ export function ShengsuanyunBillList({ onClose }: { onClose: () => void }) {
           <tbody>
             {bills.map((b) => (
               <tr key={b.ID} className="border-t border-border/40">
-                <td className="py-1.5 pr-2 tabular-nums">{fmtTime(b.CreatedAt)}</td>
+                <td className="py-1.5 pr-2 tabular-nums">
+                  {fmtTime(b.CreatedAt)}
+                </td>
                 <td className="py-1.5 pr-2">
                   {t("shengsuanyun.billRecharge", { defaultValue: "充值" })} ·{" "}
                   {subTypeText(b.BillSubType)}

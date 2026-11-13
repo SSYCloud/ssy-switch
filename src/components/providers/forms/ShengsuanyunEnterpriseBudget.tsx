@@ -64,14 +64,13 @@ export function ShengsuanyunEnterpriseBudget({
   };
   const periodStart = budget ? dateTime(budget.period_start) : null;
   const periodEnd = budget ? dateTime(budget.period_end) : null;
-  const periodKind =
-    ["month", "monthly"].includes(budget?.period_kind ?? "")
-      ? t("shengsuanyun.enterpriseBudget.month", { defaultValue: "月度预算" })
-      : ["day", "daily"].includes(budget?.period_kind ?? "")
-        ? t("shengsuanyun.enterpriseBudget.day", { defaultValue: "每日预算" })
-        : t("shengsuanyun.enterpriseBudget.period", {
-            defaultValue: "预算周期",
-          });
+  const periodKind = ["month", "monthly"].includes(budget?.period_kind ?? "")
+    ? t("shengsuanyun.enterpriseBudget.month", { defaultValue: "月度预算" })
+    : ["day", "daily"].includes(budget?.period_kind ?? "")
+      ? t("shengsuanyun.enterpriseBudget.day", { defaultValue: "每日预算" })
+      : t("shengsuanyun.enterpriseBudget.period", {
+          defaultValue: "预算周期",
+        });
   const unlimited = t("shengsuanyun.enterpriseBudget.unlimited", {
     defaultValue: "无限额",
   });

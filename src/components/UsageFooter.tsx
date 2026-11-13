@@ -25,7 +25,6 @@ interface UsageFooterProps {
   inline?: boolean; // 是否内联显示（在按钮左侧）
 }
 
-
 /// 胜算云卡片识别（与 UsageScriptModal 的判断一致）：命中才展示余额旁的充值入口
 function isShengsuanyunProvider(provider: Provider | undefined): boolean {
   if (!provider) return false;
@@ -50,7 +49,9 @@ const RechargeButton: React.FC = () => {
       onClick={(e) => {
         e.stopPropagation();
         markRechargeOpened();
-        void analyticsApi.track("recharge_clicked", { entry: "card" }).catch(() => {});
+        void analyticsApi
+          .track("recharge_clicked", { entry: "card" })
+          .catch(() => {});
         window.dispatchEvent(new CustomEvent("ssy-open-recharge"));
       }}
       className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors flex-shrink-0"

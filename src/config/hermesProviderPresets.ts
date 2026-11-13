@@ -2040,10 +2040,13 @@ const ALL_hermesProviderPresets: HermesProviderPreset[] = [
 ];
 
 // SSY-Switch: 供应商预设收敛为胜算云 + 各原厂官方入口（产品决策 2026-09-18）。
-const keepOfficialPreset = (p: (typeof ALL_hermesProviderPresets)[number]): boolean =>
+const keepOfficialPreset = (
+  p: (typeof ALL_hermesProviderPresets)[number],
+): boolean =>
   p.category === "official" ||
   p.name === "Shengsuanyun" ||
   p.partnerPromotionKey === "shengsuanyun" ||
   false;
 
-export const hermesProviderPresets: HermesProviderPreset[] = ALL_hermesProviderPresets.filter(keepOfficialPreset);
+export const hermesProviderPresets: HermesProviderPreset[] =
+  ALL_hermesProviderPresets.filter(keepOfficialPreset);

@@ -5,10 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  shengsuanyunApi,
-  type VoucherRecord,
-} from "@/lib/api/shengsuanyun";
+import { shengsuanyunApi, type VoucherRecord } from "@/lib/api/shengsuanyun";
 
 /** 可用券排最前（剩余>0 且状态 success），其余按过期时间倒序 */
 function sortRecords(records: VoucherRecord[]): VoucherRecord[] {
@@ -48,13 +45,24 @@ export function ShengsuanyunVoucherList({ onClose }: { onClose: () => void }) {
 
   const statusBadge = (r: VoucherRecord) => {
     if (r.status === "success" && r.remaining_amount > 0) {
-      return { text: t("shengsuanyun.voucherActive", { defaultValue: "已激活，正在使用中" }), cls: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400" };
+      return {
+        text: t("shengsuanyun.voucherActive", {
+          defaultValue: "已激活，正在使用中",
+        }),
+        cls: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400",
+      };
     }
     if (r.status === "used") {
-      return { text: t("shengsuanyun.voucherUsedUp", { defaultValue: "已用完" }), cls: "border-border text-muted-foreground" };
+      return {
+        text: t("shengsuanyun.voucherUsedUp", { defaultValue: "已用完" }),
+        cls: "border-border text-muted-foreground",
+      };
     }
     if (r.status.includes("expire")) {
-      return { text: t("shengsuanyun.voucherExpired", { defaultValue: "已过期" }), cls: "border-border text-muted-foreground" };
+      return {
+        text: t("shengsuanyun.voucherExpired", { defaultValue: "已过期" }),
+        cls: "border-border text-muted-foreground",
+      };
     }
     return { text: r.status, cls: "border-border text-muted-foreground" };
   };
@@ -64,7 +72,9 @@ export function ShengsuanyunVoucherList({ onClose }: { onClose: () => void }) {
       return t("shengsuanyun.voucherScopeAll", { defaultValue: "通用" });
     }
     if (scope === "loomloom") {
-      return t("shengsuanyun.voucherScopeLoom", { defaultValue: "仅限 LoomLoom" });
+      return t("shengsuanyun.voucherScopeLoom", {
+        defaultValue: "仅限 LoomLoom",
+      });
     }
     return scope;
   };
@@ -80,15 +90,13 @@ export function ShengsuanyunVoucherList({ onClose }: { onClose: () => void }) {
             variant="ghost"
             size="sm"
             className="h-7 px-1"
-            aria-label={t("shengsuanyun.refreshBalance", { defaultValue: "刷新" })}
+            aria-label={t("shengsuanyun.refreshBalance", {
+              defaultValue: "刷新",
+            })}
             disabled={loading}
             onClick={() => void load()}
           >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              "↻"
-            )}
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "↻"}
           </Button>
           <Button
             variant="ghost"
@@ -127,7 +135,9 @@ export function ShengsuanyunVoucherList({ onClose }: { onClose: () => void }) {
                 </span>
                 <span
                   className={`text-base font-semibold tabular-nums ${
-                    r.remaining_amount > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"
+                    r.remaining_amount > 0
+                      ? "text-orange-600 dark:text-orange-400"
+                      : "text-muted-foreground"
                   }`}
                 >
                   {fmtYuan(r.remaining_amount)}
@@ -139,7 +149,9 @@ export function ShengsuanyunVoucherList({ onClose }: { onClose: () => void }) {
               </div>
               <div className="min-w-0 flex-1 py-2 pr-3">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="truncate font-medium">{r.title || r.des}</span>
+                  <span className="truncate font-medium">
+                    {r.title || r.des}
+                  </span>
                   <span
                     className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${badge.cls}`}
                   >
@@ -150,8 +162,10 @@ export function ShengsuanyunVoucherList({ onClose }: { onClose: () => void }) {
                   <span>{scopeLabel(r.scope)}</span>
                   {r.expire_time && (
                     <span>
-                      {t("shengsuanyun.voucherExpireAt", { defaultValue: "有效期至" })}:{" "}
-                      {fmtTime(r.expire_time)}
+                      {t("shengsuanyun.voucherExpireAt", {
+                        defaultValue: "有效期至",
+                      })}
+                      : {fmtTime(r.expire_time)}
                     </span>
                   )}
                 </div>

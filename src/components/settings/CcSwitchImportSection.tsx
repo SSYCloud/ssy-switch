@@ -31,7 +31,8 @@ export function CcSwitchImportSection() {
       if (!pv.sourceExists) {
         setError(
           t("settings.ccswitchImport.notFound", {
-            defaultValue: "未找到原版 CC Switch 数据库（~/.cc-switch/cc-switch.db）",
+            defaultValue:
+              "未找到原版 CC Switch 数据库（~/.cc-switch/cc-switch.db）",
           }),
         );
         setStep("error");
@@ -123,11 +124,7 @@ export function CcSwitchImportSection() {
                 defaultValue: "备份并导入",
               })}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setStep("idle")}
-            >
+            <Button size="sm" variant="outline" onClick={() => setStep("idle")}>
               {t("common.cancel", { defaultValue: "取消" })}
             </Button>
           </div>

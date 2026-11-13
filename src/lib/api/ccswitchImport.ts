@@ -18,14 +18,10 @@ export interface ImportResult {
   backupFile: string | null;
 }
 
-export function previewCcSwitchImport(
-  path?: string,
-): Promise<ImportPreview> {
+export function previewCcSwitchImport(path?: string): Promise<ImportPreview> {
   return invoke("ccswitch_import_preview", { path: path ?? null });
 }
 
-export function executeCcSwitchImport(
-  path?: string,
-): Promise<ImportResult> {
+export function executeCcSwitchImport(path?: string): Promise<ImportResult> {
   return invoke("ccswitch_import_execute", { path: path ?? null });
 }

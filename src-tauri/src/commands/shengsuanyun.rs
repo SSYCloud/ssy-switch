@@ -124,7 +124,10 @@ pub async fn shengsuanyun_enterprise_budget(
 ) -> Result<EnterpriseBudgetView, String> {
     let budget = state.manager.enterprise_budget(&account_id).await?;
     let remaining_cny = budget.remaining_cny();
-    Ok(EnterpriseBudgetView { budget, remaining_cny })
+    Ok(EnterpriseBudgetView {
+        budget,
+        remaining_cny,
+    })
 }
 
 /// 充值/账单流水（分页；Asset/Balance 单位 1e-4 元）。
@@ -373,8 +376,7 @@ pub fn ensure_shengsuanyun_cards(app_state: &crate::store::AppState) -> usize {
         let Ok(at) = <crate::app_config::AppType as std::str::FromStr>::from_str(app_type) else {
             continue;
         };
-        let Ok(providers) =
-            crate::services::provider::ProviderService::list(app_state, at.clone())
+        let Ok(providers) = crate::services::provider::ProviderService::list(app_state, at.clone())
         else {
             continue;
         };
@@ -407,12 +409,9 @@ pub fn ensure_shengsuanyun_cards(app_state: &crate::store::AppState) -> usize {
 
         let created = new_shengsuanyun_provider(&at, &api_key);
         let new_id = created.id.clone();
-        if let Err(e) = crate::services::provider::ProviderService::add(
-            app_state,
-            at.clone(),
-            created,
-            false,
-        ) {
+        if let Err(e) =
+            crate::services::provider::ProviderService::add(app_state, at.clone(), created, false)
+        {
             log::error!("SSY 常驻重建 {app_type} 失败: {e}");
             continue;
         }

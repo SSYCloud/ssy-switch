@@ -5,7 +5,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { BarChart3, Loader2, LogIn, LogOut, RefreshCw, Ticket, Wallet } from "lucide-react";
+import {
+  BarChart3,
+  Loader2,
+  LogIn,
+  LogOut,
+  RefreshCw,
+  Ticket,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   shengsuanyunApi,
@@ -70,13 +78,16 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<ShengsuanyunAccount[]>([]);
-  const [completedAccount, setCompletedAccount] = useState<ShengsuanyunAccount | null>(null);
+  const [completedAccount, setCompletedAccount] =
+    useState<ShengsuanyunAccount | null>(null);
   const [busy, setBusy] = useState(false);
   const [intent, setIntent] = useState<OAuthIntent | null>(null);
   const [statsOpen, setStatsOpen] = useState(false);
   const [billsOpen, setBillsOpen] = useState(false);
   const [vouchersOpen, setVouchersOpen] = useState(false);
-  const [health, setHealth] = useState<{ app: string; ok: boolean } | null>(null);
+  const [health, setHealth] = useState<{ app: string; ok: boolean } | null>(
+    null,
+  );
   const sessionIdRef = useRef<string | null>(null);
   const loginChoicesRef = useRef<HTMLDivElement | null>(null);
   // 最近一次登录携带的目标 app：OAuth 成功后自动绑定并激活该 app 的胜算云 Provider
@@ -117,14 +128,17 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     accountsRef.current = accounts;
   }, [accounts]);
 
-  const refreshBalanceSilent = useCallback(async (accountId: string) => {
-    try {
-      await shengsuanyunApi.refreshBalance(accountId);
-      await reload();
-    } catch {
-      /* 静默：余额刷新失败不打扰用户 */
-    }
-  }, [reload]);
+  const refreshBalanceSilent = useCallback(
+    async (accountId: string) => {
+      try {
+        await shengsuanyunApi.refreshBalance(accountId);
+        await reload();
+      } catch {
+        /* 静默：余额刷新失败不打扰用户 */
+      }
+    },
+    [reload],
+  );
 
   // 登录 pending 态 2 分钟自动超时提示（后端 60s 超时兜底，前端更宽松）
   useEffect(() => {
@@ -169,13 +183,16 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
     let disposed = false;
 
     (async () => {
-      offComplete = await listen<ShengsuanyunOAuthComplete>("shengsuanyun-oauth-complete", (event) => {
-        setPhase("idle");
-        setError(null);
-        setCompletedAccount(event.payload.account);
-        void reload();
-        // 自动绑定由全局桥（shengsuanyunFlow）处理
-      });
+      offComplete = await listen<ShengsuanyunOAuthComplete>(
+        "shengsuanyun-oauth-complete",
+        (event) => {
+          setPhase("idle");
+          setError(null);
+          setCompletedAccount(event.payload.account);
+          void reload();
+          // 自动绑定由全局桥（shengsuanyunFlow）处理
+        },
+      );
       offConflict = await listen("ssy-bind-conflict", () => {
         setError(
           t("shengsuanyun.bindConflict", {
@@ -185,12 +202,13 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         );
       });
       // 健康检查结果（绑定后自动探测）
-      offHealth = await listen<{ appType: string; ok: boolean; message: string }>(
-        "ssy-health-checked",
-        (e) => {
-          setHealth({ app: e.payload.appType, ok: e.payload.ok });
-        },
-      );
+      offHealth = await listen<{
+        appType: string;
+        ok: boolean;
+        message: string;
+      }>("ssy-health-checked", (e) => {
+        setHealth({ app: e.payload.appType, ok: e.payload.ok });
+      });
       offFailed = await listen<{ sessionId: string; reason: string }>(
         "shengsuanyun-oauth-failed",
         (e) => {
@@ -282,18 +300,24 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const openRecharge = async () => {
     try {
       markRechargeOpened();
-      void analyticsApi.track("recharge_clicked", { entry: "auth_center" }).catch(() => {});
+      void analyticsApi
+        .track("recharge_clicked", { entry: "auth_center" })
+        .catch(() => {});
       window.dispatchEvent(new CustomEvent("ssy-open-recharge"));
     } catch (e) {
       setError(String(e));
     }
   };
 
-  const describeError = (error: string): { text: string; action: "recharge" | "relogin" | null } => {
+  const describeError = (
+    error: string,
+  ): { text: string; action: "recharge" | "relogin" | null } => {
     switch (classifySsyError(error)) {
       case "insufficient":
         return {
-          text: t("shengsuanyun.insufficientBalance", { defaultValue: "余额不足，无法完成请求" }),
+          text: t("shengsuanyun.insufficientBalance", {
+            defaultValue: "余额不足，无法完成请求",
+          }),
           action: "recharge",
         };
       case "relogin":
@@ -305,7 +329,9 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         };
       case "ratelimit":
         return {
-          text: t("shengsuanyun.ratelimited", { defaultValue: "请求过于频繁，请稍后重试" }),
+          text: t("shengsuanyun.ratelimited", {
+            defaultValue: "请求过于频繁，请稍后重试",
+          }),
           action: null,
         };
       case "upstream":
@@ -351,7 +377,10 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
   const loginPending = phase === "pending";
   const chooseLoginType = () => {
     setError(null);
-    loginChoicesRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    loginChoicesRef.current?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
     loginChoicesRef.current?.querySelector("button")?.focus();
   };
 
@@ -377,11 +406,7 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             >
               {t("shengsuanyun.intentConfirm", { defaultValue: "开始登录" })}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIntent(null)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setIntent(null)}>
               {t("shengsuanyun.intentCancel", { defaultValue: "忽略" })}
             </Button>
           </div>
@@ -397,15 +422,22 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         </div>
       )}
 
-      {completedAccount && accounts.some((a) => a.id === completedAccount.id) && (
-        <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm">
-          <span>{t("shengsuanyun.loginSuccessAccount", {
-            defaultValue: "登录成功，当前登录账号：{{name}}",
-            name: completedAccount.displayName || completedAccount.uidMasked,
-          })}</span>
-          <ShengsuanyunAccountBadge account={completedAccount} />
-        </div>
-      )}
+      {completedAccount &&
+        accounts.some((a) => a.id === completedAccount.id) && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm"
+          >
+            <span>
+              {t("shengsuanyun.loginSuccessAccount", {
+                defaultValue: "登录成功，当前登录账号：{{name}}",
+                name:
+                  completedAccount.displayName || completedAccount.uidMasked,
+              })}
+            </span>
+            <ShengsuanyunAccountBadge account={completedAccount} />
+          </div>
+        )}
 
       {loginPending && (
         <div className="space-y-2 rounded-lg border border-border/60 bg-muted/40 p-4 text-sm">
@@ -440,122 +472,150 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
             </div>
             <div className="text-sm text-muted-foreground">
               {a.emailMasked && <span className="mr-3">{a.emailMasked}</span>}
-              {hasPersonalWallet(a) ? <span>
-                {t("shengsuanyun.balance", { defaultValue: "余额" })}:{" "}
-                {a.balanceYuan != null
-                  ? `¥${a.balanceYuan.toFixed(2)}`
-                  : "—"}
-              </span> : <span>{a.accountType === "enterprise"
-                ? t("shengsuanyun.enterpriseBudgetHint", { defaultValue: "使用企业项目预算" })
-                : t("shengsuanyun.accountIdentityHint", { defaultValue: "重新登录以确认账号身份" })}</span>}
+              {hasPersonalWallet(a) ? (
+                <span>
+                  {t("shengsuanyun.balance", { defaultValue: "余额" })}:{" "}
+                  {a.balanceYuan != null ? `¥${a.balanceYuan.toFixed(2)}` : "—"}
+                </span>
+              ) : (
+                <span>
+                  {a.accountType === "enterprise"
+                    ? t("shengsuanyun.enterpriseBudgetHint", {
+                        defaultValue: "使用企业项目预算",
+                      })
+                    : t("shengsuanyun.accountIdentityHint", {
+                        defaultValue: "重新登录以确认账号身份",
+                      })}
+                </span>
+              )}
               {hasPersonalWallet(a) && a.voucherYuan != null && (
                 <span className="ml-2">
-                  {t("shengsuanyun.voucher", { defaultValue: "体验券" })}:{" "}
-                  ¥{a.voucherYuan.toFixed(2)}
+                  {t("shengsuanyun.voucher", { defaultValue: "体验券" })}: ¥
+                  {a.voucherYuan.toFixed(2)}
                 </span>
               )}
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-          <div className="flex items-center gap-2">
-            {hasPersonalWallet(a) && <>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={t("shengsuanyun.voucherList", { defaultValue: "代金券" })}
-              title={t("shengsuanyun.voucherList", { defaultValue: "代金券" })}
-              onClick={() => {
-                setVouchersOpen((v) => !v);
-                setStatsOpen(false);
-                setBillsOpen(false);
-              }}
-            >
-              <Ticket className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={t("shengsuanyun.usageStats", { defaultValue: "调用统计" })}
-              onClick={() => {
-                setStatsOpen((v) => !v);
-                setBillsOpen(false);
-                setVouchersOpen(false);
-                void analyticsApi.track("usage_stats_opened").catch(() => {});
-              }}
-            >
-              <BarChart3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={t("shengsuanyun.billList", { defaultValue: "充值记录" })}
-              onClick={() => {
-                setBillsOpen((v) => !v);
-                setStatsOpen(false);
-                setVouchersOpen(false);
-              }}
-            >
-              {t("shengsuanyun.billList", { defaultValue: "充值记录" })}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              aria-label={t("shengsuanyun.refreshBalance", {
-                defaultValue: "刷新余额",
-              })}
-              onClick={() => refreshBalance(a.id)}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            </>}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={chooseLoginType}
-            >
-              {t("shengsuanyun.relogin", { defaultValue: "重新登录" })}
-            </Button>
-            {hasPersonalWallet(a) && <Button
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-500"
-              disabled={busy}
-              aria-label={t("shengsuanyun.recharge", { defaultValue: "充值" })}
-              onClick={openRecharge}
-            >
-              <Wallet className="mr-1 h-4 w-4" />
-              {t("shengsuanyun.recharge", { defaultValue: "充值" })}
-            </Button>}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              aria-label={t("shengsuanyun.logout", { defaultValue: "退出登录" })}
-              onClick={() => logout(a.id)}
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>{t("shengsuanyun.bindTo", { defaultValue: "绑定并激活" })}:</span>
-            {(["claude", "codex", "gemini"] as const).map((appType) => (
+            <div className="flex items-center gap-2">
+              {hasPersonalWallet(a) && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={t("shengsuanyun.voucherList", {
+                      defaultValue: "代金券",
+                    })}
+                    title={t("shengsuanyun.voucherList", {
+                      defaultValue: "代金券",
+                    })}
+                    onClick={() => {
+                      setVouchersOpen((v) => !v);
+                      setStatsOpen(false);
+                      setBillsOpen(false);
+                    }}
+                  >
+                    <Ticket className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={t("shengsuanyun.usageStats", {
+                      defaultValue: "调用统计",
+                    })}
+                    onClick={() => {
+                      setStatsOpen((v) => !v);
+                      setBillsOpen(false);
+                      setVouchersOpen(false);
+                      void analyticsApi
+                        .track("usage_stats_opened")
+                        .catch(() => {});
+                    }}
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={t("shengsuanyun.billList", {
+                      defaultValue: "充值记录",
+                    })}
+                    onClick={() => {
+                      setBillsOpen((v) => !v);
+                      setStatsOpen(false);
+                      setVouchersOpen(false);
+                    }}
+                  >
+                    {t("shengsuanyun.billList", { defaultValue: "充值记录" })}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    aria-label={t("shengsuanyun.refreshBalance", {
+                      defaultValue: "刷新余额",
+                    })}
+                    onClick={() => refreshBalance(a.id)}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
               <Button
-                key={appType}
-                variant="secondary"
+                variant="outline"
                 size="sm"
-                className="h-6 px-2 text-xs"
                 disabled={busy}
-                onClick={() => bindToApp(appType, a.id)}
+                onClick={chooseLoginType}
               >
-                {appType === "claude"
-                  ? "Claude"
-                  : appType === "codex"
-                    ? "Codex"
-                    : "Gemini"}
+                {t("shengsuanyun.relogin", { defaultValue: "重新登录" })}
               </Button>
-            ))}
-          </div>
+              {hasPersonalWallet(a) && (
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-500"
+                  disabled={busy}
+                  aria-label={t("shengsuanyun.recharge", {
+                    defaultValue: "充值",
+                  })}
+                  onClick={openRecharge}
+                >
+                  <Wallet className="mr-1 h-4 w-4" />
+                  {t("shengsuanyun.recharge", { defaultValue: "充值" })}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                aria-label={t("shengsuanyun.logout", {
+                  defaultValue: "退出登录",
+                })}
+                onClick={() => logout(a.id)}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>
+                {t("shengsuanyun.bindTo", { defaultValue: "绑定并激活" })}:
+              </span>
+              {(["claude", "codex", "gemini"] as const).map((appType) => (
+                <Button
+                  key={appType}
+                  variant="secondary"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  disabled={busy}
+                  onClick={() => bindToApp(appType, a.id)}
+                >
+                  {appType === "claude"
+                    ? "Claude"
+                    : appType === "codex"
+                      ? "Codex"
+                      : "Gemini"}
+                </Button>
+              ))}
+            </div>
           </div>
           {a.accountType === "enterprise" && a.accountRole === "sub" && (
             <ShengsuanyunEnterpriseBudget account={a} />
@@ -564,14 +624,22 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
       ))}
 
       {/* 额度不足提醒（立项 P0：额度提醒） */}
-      {accounts.some((a) => hasPersonalWallet(a) && a.balanceYuan != null && a.balanceYuan < 10) && (
+      {accounts.some(
+        (a) =>
+          hasPersonalWallet(a) && a.balanceYuan != null && a.balanceYuan < 10,
+      ) && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700 dark:text-orange-300">
           <span>
             {t("shengsuanyun.lowBalance", {
               defaultValue: "余额较低，可能很快用尽",
             })}
           </span>
-          <Button variant="outline" size="sm" onClick={openRecharge} disabled={busy}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openRecharge}
+            disabled={busy}
+          >
             <Wallet className="mr-1 h-3.5 w-3.5" />
             {t("shengsuanyun.goRecharge", { defaultValue: "前往充值" })}
           </Button>
@@ -600,8 +668,12 @@ export function ShengsuanyunAuthSection({ targetApp = null }: Props) {
         </div>
       )}
 
-      {statsOpen && <ShengsuanyunUsageStats onClose={() => setStatsOpen(false)} />}
-      {billsOpen && <ShengsuanyunBillList onClose={() => setBillsOpen(false)} />}
+      {statsOpen && (
+        <ShengsuanyunUsageStats onClose={() => setStatsOpen(false)} />
+      )}
+      {billsOpen && (
+        <ShengsuanyunBillList onClose={() => setBillsOpen(false)} />
+      )}
       {vouchersOpen && (
         <ShengsuanyunVoucherList onClose={() => setVouchersOpen(false)} />
       )}

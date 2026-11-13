@@ -25,11 +25,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
-      - name: Verify app updater
+      - name: Verify account UI and app updater
         run: |
           npm install --global pnpm@10.12.3 --force
           pnpm install --frozen-lockfile
-          pnpm exec vitest run tests/lib/updater.test.ts tests/contexts/UpdateContext.test.tsx
+          pnpm exec vitest run tests/lib/updater.test.ts tests/contexts/UpdateContext.test.tsx tests/components/ShengsuanyunLoginButtons.test.tsx tests/components/ShengsuanyunAccountIdentity.test.tsx tests/components/ShengsuanyunEnterpriseBudget.test.tsx tests/components/SsyKeyPicker.test.tsx tests/lib/shengsuanyunFlow.test.ts
           pnpm run typecheck
 
   build:

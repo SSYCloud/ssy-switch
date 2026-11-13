@@ -1,0 +1,32 @@
+name: Fetch private Rust dependencies
+description: Fetch locked dependencies without storing credentials or caching private source
+inputs:
+  token:
+    description: Token with read access to the private SDK repository
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PRIVATE_REPO_TOKEN: ${{ inputs.token }}
+        CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        CARGO_NET_OFFLINE: 'false'
+        GIT_TERMINAL_PROMPT: '0'
+        GIT_CONFIG_COUNT: '2'
+        GIT_CONFIG_KEY_0: credential.https://github.com.username
+        GIT_CONFIG_VALUE_0: x-access-token
+        GIT_CONFIG_KEY_1: credential.helper
+        GIT_CONFIG_VALUE_1: ''
+      run: |
+        set -euo pipefail
+        [ -n "$PRIVATE_REPO_TOKEN" ] || { echo 'Missing private dependency credential' >&2; exit 1; }
+        export GIT_ASKPASS="$RUNNER_TEMP/ssy-git-askpass.sh"
+        trap 'rm -f "$GIT_ASKPASS" "$RUNNER_TEMP/ssy-fetch.log"' EXIT
+        printf '#!/bin/sh\ncase "$1" in *sername*) printf "%%s\\n" x-access-token ;; *) printf "%%s\\n" "$PRIVATE_REPO_TOKEN" ;; esac\n' > "$GIT_ASKPASS"
+        chmod 700 "$GIT_ASKPASS"
+        if ! cargo fetch --locked --manifest-path src-tauri/Cargo.toml > "$RUNNER_TEMP/ssy-fetch.log" 2>&1; then
+          echo 'Dependency fetch failed. Check private repository access and the pinned SDK version.' >&2
+          exit 1
+        fi
+        echo 'Locked dependencies fetched. No credentials or private source are cached or uploaded.'

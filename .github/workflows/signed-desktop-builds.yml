@@ -55,6 +55,10 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then echo "$prefix" >> "$GITHUB_PATH"; else echo "$prefix/bin" >> "$GITHUB_PATH"; fi
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+      - name: Fetch private SDK
+        uses: ./.github/actions/fetch-private-sdk
+        with:
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
       - name: Import Developer ID certificate
         shell: bash
         env:
@@ -88,24 +92,21 @@ jobs:
       - name: Build signed macOS app
         shell: bash
         env:
-          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-          GIT_TERMINAL_PROMPT: '0'
-          GIT_CONFIG_COUNT: '1'
-          GIT_CONFIG_KEY_0: credential.https://github.com.username
-          GIT_CONFIG_VALUE_0: x-access-token
+          CARGO_NET_OFFLINE: 'true'
         run: |
           set -euo pipefail
           # Preserve signed packages before contacting Apple. Tauri's internal
           # notarization otherwise blocks before Actions can save the app or ID.
           unset APPLE_ID APPLE_PASSWORD APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
-          if [ -n "$PRIVATE_REPO_TOKEN" ]; then
-            export GIT_ASKPASS="$RUNNER_TEMP/git-askpass.sh"
-            trap 'rm -f "$GIT_ASKPASS"' EXIT
-            printf '#!/bin/sh\ncase "$1" in *sername*) printf "%%s\\n" x-access-token ;; *) printf "%%s\\n" "$PRIVATE_REPO_TOKEN" ;; esac\n' > "$GIT_ASKPASS"
-            chmod 700 "$GIT_ASKPASS"
+          # Compiler diagnostics can contain private source. Do not publish
+          # them as public logs or artifacts. SDK checks run in its private CI.
+          build_log="$RUNNER_TEMP/ssy-desktop-build.log"
+          trap 'rm -f "$build_log"' EXIT
+          if ! pnpm tauri build --target universal-apple-darwin --bundles app,dmg > "$build_log" 2>&1; then
+            echo 'macOS build failed. Private compiler diagnostics were not published.' >&2
+            exit 1
           fi
-          pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+          echo 'Signed macOS app and DMG built successfully.'
       - name: Verify and preserve signed macOS packages
         shell: bash
         env:
@@ -273,6 +274,10 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then echo "$prefix" >> "$GITHUB_PATH"; else echo "$prefix/bin" >> "$GITHUB_PATH"; fi
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+      - name: Fetch private SDK
+        uses: ./.github/actions/fetch-private-sdk
+        with:
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
       - name: Import persistent self-signed certificate
         timeout-minutes: 3
         shell: pwsh
@@ -309,23 +314,15 @@ jobs:
       - name: Build signed Windows app and installers
         shell: pwsh
         env:
-          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-          GIT_TERMINAL_PROMPT: '0'
-          GIT_CONFIG_COUNT: '1'
-          GIT_CONFIG_KEY_0: credential.https://github.com.username
-          GIT_CONFIG_VALUE_0: x-access-token
+          CARGO_NET_OFFLINE: 'true'
         run: |
           $ErrorActionPreference = 'Stop'
-          $askpass = Join-Path $env:RUNNER_TEMP 'git-askpass.cmd'
+          $buildLog = Join-Path $env:RUNNER_TEMP 'ssy-desktop-build.log'
           try {
-            if ($env:PRIVATE_REPO_TOKEN) {
-              $env:GIT_ASKPASS = $askpass
-              [IO.File]::WriteAllText($askpass, "@echo off`r`necho %~1 | findstr /i username >nul`r`nif not errorlevel 1 (echo x-access-token) else (echo %PRIVATE_REPO_TOKEN%)`r`n")
-            }
-            pnpm tauri build --target x86_64-pc-windows-msvc --bundles 'msi,nsis' --config (Join-Path $env:RUNNER_TEMP 'tauri-signing.json')
-            if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
-          } finally { Remove-Item -LiteralPath $askpass -Force -ErrorAction SilentlyContinue }
+            pnpm tauri build --target x86_64-pc-windows-msvc --bundles 'msi,nsis' --config (Join-Path $env:RUNNER_TEMP 'tauri-signing.json') *> $buildLog
+            if ($LASTEXITCODE -ne 0) { throw 'Windows build failed. Private compiler diagnostics were not published.' }
+            Write-Host 'Signed Windows application and installers built successfully.'
+          } finally { Remove-Item -LiteralPath $buildLog -Force -ErrorAction SilentlyContinue }
       - name: Verify and collect Windows packages
         shell: pwsh
         run: |

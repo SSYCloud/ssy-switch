@@ -26,6 +26,8 @@ jobs:
       - name: Checkout
         if: github.event_name == 'push'
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Detect changed paths
         id: filter
@@ -61,6 +63,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -103,7 +107,8 @@ jobs:
     name: Backend Checks
     runs-on: ${{ matrix.os }}
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.backend == 'true'
+    # Private source must not be exposed to public pull request code.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +116,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -129,15 +136,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends libsoup-3.0-dev \
             || sudo apt-get install -y --no-install-recommends libsoup2.4-dev
 
-      - name: Cache Cargo registry and build
+      - name: Cache public Cargo registry only
         uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-public-registry-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-public-registry-v1-
+
+      - name: Fetch private SDK
+        uses: ./.github/actions/fetch-private-sdk
+        with:
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Create frontend dist placeholder
         shell: bash
@@ -147,22 +157,25 @@ jobs:
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+        run: python .github/scripts/private_command.py cargo clippy --offline --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - name: Run tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: python .github/scripts/private_command.py cargo test --offline --locked --manifest-path src-tauri/Cargo.toml
 
   backend-windows-wsl2:
     name: Backend Checks (Windows + WSL2 home)
     runs-on: windows-2025
     timeout-minutes: 45
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.backend == 'true'
+    # Private source must not be exposed to public pull request code.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
@@ -173,15 +186,18 @@ jobs:
           distribution: Ubuntu-24.04
           wsl-version: 2
 
-      - name: Cache Cargo registry and build
+      - name: Cache public Cargo registry only
         uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-public-registry-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-public-registry-v1-
+
+      - name: Fetch private SDK
+        uses: ./.github/actions/fetch-private-sdk
+        with:
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Create frontend dist placeholder
         shell: bash
@@ -212,11 +228,11 @@ jobs:
           TMP: ${{ runner.temp }}
         shell: pwsh
         run: |
-          $testBinary = cargo test --lib --manifest-path src-tauri/Cargo.toml --no-run --message-format=json |
+          $testBinary = cargo test --offline --locked --lib --manifest-path src-tauri/Cargo.toml --no-run --message-format=json 2> (Join-Path $env:RUNNER_TEMP 'ssy-test-build.log') |
             ForEach-Object {
               if ($_ -match '"reason":"compiler-artifact"') {
                 $artifact = $_ | ConvertFrom-Json
-                if ($artifact.executable -and $artifact.profile.test -and $artifact.target.name -eq 'cc_switch_lib') {
+                if ($artifact.executable -and $artifact.profile.test -and $artifact.target.name -eq 'ssy_switch_lib') {
                   $artifact.executable
                 }
               }
@@ -225,7 +241,7 @@ jobs:
             exit $LASTEXITCODE
           }
           if (-not $testBinary) {
-            throw "cc_switch_lib test binary not found in cargo compiler artifacts"
+            throw "SSY Switch test binary not found in cargo compiler artifacts"
           }
           "CC_SWITCH_TEST_EXE=$testBinary" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
